@@ -1,0 +1,478 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+
+const SUITS = [
+  { id: 'spades', symbol: '♠', color: 'white' },
+  { id: 'hearts', symbol: '♥', color: 'red' },
+  { id: 'clubs', symbol: '♣', color: 'white' },
+  { id: 'diamonds', symbol: '♦', color: 'red' }
+];
+
+const RANKS = [
+  { value: 1, label: 'A' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 4, label: '4' },
+  { value: 5, label: '5' },
+  { value: 6, label: '6' },
+  { value: 7, label: '7' },
+  { value: 8, label: '8' },
+  { value: 9, label: '9' },
+  { value: 10, label: '10' },
+  { value: 11, label: 'J' },
+  { value: 12, label: 'Q' },
+  { value: 13, label: 'K' }
+];
+
+const createDeck = () => {
+  let deck = [];
+  let id = 0;
+  for (const suit of SUITS) {
+    for (const rank of RANKS) {
+      deck.push({
+        id: `card-${id++}`,
+        suit: suit.id,
+        symbol: suit.symbol,
+        color: suit.color,
+        rank: rank.value,
+        label: rank.label,
+        isFaceUp: false
+      });
+    }
+  }
+  return deck;
+};
+
+const shuffle = (array) => {
+  let currentIndex = array.length, randomIndex;
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+  }
+  return array;
+};
+
+const Card = ({ card, onClick, onDoubleClick, isSelected, isEmptyPlaceholder }) => {
+  if (isEmptyPlaceholder) {
+    return (
+      <div
+        onClick={onClick}
+        className="w-16 h-24 border border-gray-600/50 rounded-md box-border cursor-pointer hover:border-gray-400 transition-colors"
+      />
+    );
+  }
+
+  if (!card.isFaceUp) {
+    return (
+      <div
+        onClick={onClick}
+        className={`w-16 h-24 border border-white rounded-md box-border cursor-pointer bg-[#1e1e1e] flex flex-col justify-between p-1
+          ${isSelected ? 'ring-2 ring-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.5)] z-10' : ''}`}
+      >
+        <div className="w-full h-full border border-gray-500/30 rounded-sm"></div>
+      </div>
+    );
+  }
+
+  const textColorClass = card.color === 'red' ? 'text-[#ff5555]' : 'text-gray-100';
+
+  return (
+    <div
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      className={`w-16 h-24 border border-white rounded-md box-border cursor-pointer relative bg-[#1e1e1e]
+        ${isSelected ? 'ring-2 ring-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.6)] z-10' : ''}`}
+    >
+      <div className={`absolute -top-3 left-1 bg-[#1e1e1e] px-0.5 text-sm font-medium ${textColorClass} flex items-center leading-none`}>
+        {card.label}<span className="ml-[1px] text-xs">{card.symbol}</span>
+      </div>
+      <div className={`absolute -bottom-3 right-1 bg-[#1e1e1e] px-0.5 text-sm font-medium ${textColorClass} flex items-center leading-none transform rotate-180`}>
+        {card.label}<span className="ml-[1px] text-xs">{card.symbol}</span>
+      </div>
+    </div>
+  );
+};
+
+const TerminalSolitaire = () => {
+  const [stock, setStock] = useState([]);
+  const [waste, setWaste] = useState([]);
+  const [foundations, setFoundations] = useState([[], [], [], []]);
+  const [tableaus, setTableaus] = useState([[], [], [], [], [], [], []]);
+  const [selected, setSelected] = useState(null);
+  const [hasWon, setHasWon] = useState(false);
+  const [moveCount, setMoveCount] = useState(0);
+
+  const startNewGame = useCallback(() => {
+    let deck = shuffle(createDeck());
+    let newTableaus = [[], [], [], [], [], [], []];
+    for (let i = 0; i < 7; i++) {
+      for (let j = i; j < 7; j++) {
+        let card = deck.pop();
+        if (i === j) card.isFaceUp = true;
+        newTableaus[j].push(card);
+      }
+    }
+    setTableaus(newTableaus);
+    setStock(deck);
+    setWaste([]);
+    setFoundations([[], [], [], []]);
+    setSelected(null);
+    setHasWon(false);
+    setMoveCount(0);
+  }, []);
+
+  useEffect(() => {
+    startNewGame();
+  }, [startNewGame]);
+
+  useEffect(() => {
+    const totalInFoundations = foundations.reduce((sum, f) => sum + f.length, 0);
+    if (totalInFoundations === 52) {
+      setHasWon(true);
+    }
+  }, [foundations]);
+
+  const canMoveToTableau = (cardsToMove, destTableauIndex) => {
+    const bottomCard = cardsToMove[0];
+    const destPile = tableaus[destTableauIndex];
+    if (destPile.length === 0) {
+      return bottomCard.rank === 13;
+    }
+    const topDestCard = destPile[destPile.length - 1];
+    return topDestCard.color !== bottomCard.color && topDestCard.rank === bottomCard.rank + 1;
+  };
+
+  const canMoveToFoundation = (card, destFoundationIndex) => {
+    const destPile = foundations[destFoundationIndex];
+    if (destPile.length === 0) {
+      return card.rank === 1;
+    }
+    const topDestCard = destPile[destPile.length - 1];
+    return topDestCard.suit === card.suit && topDestCard.rank + 1 === card.rank;
+  };
+
+  const autoFindFoundation = (card) => {
+    for (let i = 0; i < 4; i++) {
+      if (canMoveToFoundation(card, i)) return i;
+    }
+    return -1;
+  };
+
+  const flipExposedTableauCard = (newTableaus, tIndex) => {
+    if (newTableaus[tIndex].length > 0) {
+      const lastCard = newTableaus[tIndex][newTableaus[tIndex].length - 1];
+      if (!lastCard.isFaceUp) {
+        newTableaus[tIndex][newTableaus[tIndex].length - 1] = { ...lastCard, isFaceUp: true };
+      }
+    }
+  };
+
+  const handleStockClick = () => {
+    setSelected(null);
+    if (stock.length > 0) {
+      const newStock = [...stock];
+      const card = newStock.pop();
+      card.isFaceUp = true;
+      setStock(newStock);
+      setWaste([...waste, card]);
+      setMoveCount(m => m + 1);
+    } else if (waste.length > 0) {
+      const newWaste = [...waste].reverse().map(c => ({ ...c, isFaceUp: false }));
+      setStock(newWaste);
+      setWaste([]);
+      setMoveCount(m => m + 1);
+    }
+  };
+
+  const handleCardClick = (e, area, index, cardIndex) => {
+    e.stopPropagation();
+
+    if (!selected) {
+      let card;
+      if (area === 'waste') card = waste[waste.length - 1];
+      else if (area === 'tableau') card = tableaus[index][cardIndex];
+      else if (area === 'foundation') card = foundations[index][foundations[index].length - 1];
+
+      if (card && card.isFaceUp) {
+        setSelected({ area, index, cardIndex });
+      }
+      return;
+    }
+
+    if (selected.area === area && selected.index === index && selected.cardIndex === cardIndex) {
+      setSelected(null);
+      return;
+    }
+
+    let cardsToMove = [];
+    if (selected.area === 'waste') {
+      cardsToMove = [waste[waste.length - 1]];
+    } else if (selected.area === 'foundation') {
+      cardsToMove = [foundations[selected.index][foundations[selected.index].length - 1]];
+    } else if (selected.area === 'tableau') {
+      cardsToMove = tableaus[selected.index].slice(selected.cardIndex);
+    }
+
+    if (cardsToMove.length === 0) {
+      setSelected(null);
+      return;
+    }
+
+    if (area === 'tableau') {
+      if (canMoveToTableau(cardsToMove, index)) {
+        executeMove(selected, { area: 'tableau', index }, cardsToMove);
+        return;
+      }
+    }
+
+    if (area === 'foundation' && cardsToMove.length === 1) {
+      if (canMoveToFoundation(cardsToMove[0], index)) {
+        executeMove(selected, { area: 'foundation', index }, cardsToMove);
+        return;
+      }
+    }
+
+    let clickedCard;
+    if (area === 'tableau' && tableaus[index][cardIndex]) clickedCard = tableaus[index][cardIndex];
+    if (clickedCard && clickedCard.isFaceUp) {
+      setSelected({ area, index, cardIndex });
+    } else {
+      setSelected(null);
+    }
+  };
+
+  const handleEmptyPileClick = (area, index) => {
+    if (!selected) return;
+
+    let cardsToMove = [];
+    if (selected.area === 'waste') cardsToMove = [waste[waste.length - 1]];
+    else if (selected.area === 'foundation') cardsToMove = [foundations[selected.index][foundations[selected.index].length - 1]];
+    else if (selected.area === 'tableau') cardsToMove = tableaus[selected.index].slice(selected.cardIndex);
+
+    if (cardsToMove.length === 0) return;
+
+    if (area === 'tableau') {
+      if (canMoveToTableau(cardsToMove, index)) {
+        executeMove(selected, { area: 'tableau', index }, cardsToMove);
+      }
+    } else if (area === 'foundation' && cardsToMove.length === 1) {
+      if (canMoveToFoundation(cardsToMove[0], index)) {
+        executeMove(selected, { area: 'foundation', index }, cardsToMove);
+      }
+    }
+
+    setSelected(null);
+  };
+
+  const handleDoubleClick = (e, area, index, cardIndex) => {
+    e.stopPropagation();
+    let card;
+    if (area === 'waste') card = waste[waste.length - 1];
+    else if (area === 'tableau' && cardIndex === tableaus[index].length - 1) card = tableaus[index][cardIndex];
+
+    if (!card || !card.isFaceUp) return;
+
+    const targetFoundationIndex = autoFindFoundation(card);
+    if (targetFoundationIndex !== -1) {
+      executeMove({ area, index, cardIndex }, { area: 'foundation', index: targetFoundationIndex }, [card]);
+      setSelected(null);
+    }
+  };
+
+  const executeMove = (source, dest, cards) => {
+    if (source.area === 'waste') {
+      setWaste(w => w.slice(0, -1));
+    } else if (source.area === 'foundation') {
+      setFoundations(f => {
+        const nf = [...f];
+        nf[source.index] = nf[source.index].slice(0, -1);
+        return nf;
+      });
+    } else if (source.area === 'tableau') {
+      setTableaus(t => {
+        const nt = [...t];
+        nt[source.index] = nt[source.index].slice(0, source.cardIndex);
+        flipExposedTableauCard(nt, source.index);
+        return nt;
+      });
+    }
+
+    if (dest.area === 'tableau') {
+      setTableaus(t => {
+        const nt = [...t];
+        nt[dest.index] = [...nt[dest.index], ...cards];
+        return nt;
+      });
+    } else if (dest.area === 'foundation') {
+      setFoundations(f => {
+        const nf = [...f];
+        nf[dest.index] = [...nf[dest.index], ...cards];
+        return nf;
+      });
+    }
+
+    setMoveCount(m => m + 1);
+    setSelected(null);
+  };
+
+  const isCardSelected = (area, index, cardIndex) => {
+    if (!selected) return false;
+    if (selected.area !== area) return false;
+
+    if (area === 'waste' || area === 'foundation') {
+      return true;
+    }
+
+    if (area === 'tableau' && selected.index === index) {
+      return cardIndex >= selected.cardIndex;
+    }
+    return false;
+  };
+
+  return (
+    <div className="w-full max-w-5xl terminal-bg rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-gray-700 flex flex-col overflow-hidden h-[800px] max-h-screen">
+      <div className="bg-[#2d2d2d] h-8 flex items-center px-4 relative flex-shrink-0 border-b border-black">
+        <div className="flex gap-2 z-10">
+          <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
+          <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
+          <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]"></div>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-gray-400 text-sm font-semibold tracking-wider">Terminal - bash - 120x40</span>
+        </div>
+        <div className="ml-auto z-10 flex gap-4 text-xs text-gray-500">
+          <button onClick={startNewGame} className="hover:text-white transition-colors uppercase cursor-pointer">Restart</button>
+          <span>Moves: {moveCount}</span>
+        </div>
+      </div>
+
+      <div className="flex-1 p-6 sm:p-10 flex flex-col relative overflow-y-auto" onClick={() => setSelected(null)}>
+        {hasWon && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="text-center p-8 border border-green-500 rounded-lg bg-[#1e1e1e]">
+              <h2 className="text-3xl text-green-400 mb-4 font-bold tracking-widest">YOU WIN</h2>
+              <p className="text-gray-400 mb-6">Moves: {moveCount}</p>
+              <button
+                onClick={startNewGame}
+                className="px-6 py-2 border border-white hover:bg-white hover:text-black transition-colors font-bold uppercase tracking-wider"
+              >
+                Play Again
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-between items-start mb-12 flex-shrink-0">
+          <div className="flex gap-4">
+            <div
+              className="w-16 h-24 border border-white rounded-md cursor-pointer striped-bg flex items-center justify-center shadow-lg"
+              onClick={handleStockClick}
+            >
+              {stock.length === 0 && (
+                <div className="w-10 h-10 border-2 border-gray-500 rounded-full flex items-center justify-center opacity-50">
+                  <span className="text-gray-500 text-2xl rotate-[135deg]">⟳</span>
+                </div>
+              )}
+            </div>
+
+            <div className="w-16 h-24 relative">
+              {waste.length === 0 ? (
+                <Card isEmptyPlaceholder={true} onClick={() => handleEmptyPileClick('waste', 0)} />
+              ) : (
+                <Card
+                  card={waste[waste.length - 1]}
+                  onClick={(e) => handleCardClick(e, 'waste', 0, waste.length - 1)}
+                  onDoubleClick={(e) => handleDoubleClick(e, 'waste', 0, waste.length - 1)}
+                  isSelected={isCardSelected('waste', 0, waste.length - 1)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            {foundations.map((foundation, index) => (
+              <div key={`foundation-${index}`} className="w-16 h-24 relative">
+                {foundation.length === 0 ? (
+                  <Card isEmptyPlaceholder={true} onClick={() => handleEmptyPileClick('foundation', index)} />
+                ) : (
+                  <Card
+                    card={foundation[foundation.length - 1]}
+                    onClick={(e) => handleCardClick(e, 'foundation', index, foundation.length - 1)}
+                    isSelected={isCardSelected('foundation', index, foundation.length - 1)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-4 sm:gap-6 justify-center sm:justify-between flex-1 overflow-x-auto min-w-max pb-10">
+          {tableaus.map((tableau, tIndex) => (
+            <div key={`tableau-${tIndex}`} className="w-16 relative flex flex-col" style={{ minHeight: '300px' }}>
+              {tableau.length === 0 ? (
+                <Card isEmptyPlaceholder={true} onClick={() => handleEmptyPileClick('tableau', tIndex)} />
+              ) : (
+                tableau.map((card, cIndex) => (
+                  <div
+                    key={card.id}
+                    style={{
+                      position: cIndex === 0 ? 'relative' : 'absolute',
+                      top: cIndex === 0 ? '0' : `${cIndex * (card.isFaceUp ? 26 : 14)}px`,
+                      zIndex: cIndex
+                    }}
+                  >
+                    <Card
+                      card={card}
+                      onClick={(e) => handleCardClick(e, 'tableau', tIndex, cIndex)}
+                      onDoubleClick={(e) => handleDoubleClick(e, 'tableau', tIndex, cIndex)}
+                      isSelected={isCardSelected('tableau', tIndex, cIndex)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const App = () => {
+  useEffect(() => {
+    const fontLink = document.createElement('link');
+    fontLink.rel = 'stylesheet';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap';
+    document.head.appendChild(fontLink);
+
+    const style = document.createElement('style');
+    style.textContent = `
+      body { background-color: #121212; color: #e0e0e0; margin: 0; overflow: hidden; font-family: 'Fira Code', monospace; }
+      .terminal-bg { background-color: #1e1e1e; }
+      .striped-bg { background: repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 255, 255, 0.4) 4px, rgba(255, 255, 255, 0.4) 5px); }
+      * { user-select: none; }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.head.removeChild(fontLink);
+      document.head.removeChild(style);
+    };
+  }, []);
+
+  return (
+    <Router basename="/">
+      <div className="w-full min-h-screen bg-[#121212] flex items-center justify-center p-4 sm:p-8 overflow-hidden">
+        <Routes>
+          <Route path="/" element={<TerminalSolitaire />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+};
+
+export default App;
