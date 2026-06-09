@@ -79,8 +79,7 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
   }
 
   const textColorClass = card.color === 'red' ? 'text-[#ff5555]' : 'text-gray-100';
-  // Corner straddle labels (desktop). On mobile a single centered label is shown instead.
-  const labelBase = `absolute px-1 py-2 card-label font-mono font-medium ${textColorClass} hidden sm:flex items-center leading-none`;
+  const labelBase = `absolute px-1 py-2 card-label font-mono font-medium ${textColorClass} flex items-center leading-none`;
 
   return (
     <div
@@ -91,12 +90,7 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
       className={`border ${card.color === 'red' ? 'border-[#ff5555]' : 'border-white'} rounded-md box-border cursor-pointer relative bg-[#1e1e1e] touch-none
         ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} ${isDragging ? 'invisible' : ''} transition-transform duration-100`}
     >
-      {showCursor && <span className="card-cursor max-sm:hidden" style={{ width: 'var(--curw)', height: 'var(--curh)' }} />}
-      <div className="absolute inset-0 flex sm:hidden items-center justify-center">
-        <span className={`font-mono font-semibold leading-none ${textColorClass}`} style={{ fontSize: 'var(--rankc)' }}>
-          {card.label}<span style={{ fontSize: 'var(--suitc)', marginLeft: 2 }}>{card.symbol}</span>{showCursor && <span className="prompt-cursor" />}
-        </span>
-      </div>
+      {showCursor && <span className="card-cursor" style={{ width: 'var(--curw)', height: 'var(--curh)' }} />}
       <div className={labelBase} style={{ top: 0, left: 'var(--lleft)', transform: 'translateY(-50%)', fontSize: 'var(--rank)' }}>
         {card.label}<span style={{ marginLeft: 1, fontSize: 'var(--suit)' }}>{card.symbol}</span>
       </div>
@@ -907,10 +901,8 @@ const TerminalSolitaire = () => {
         transition: isMobile ? 'none' : 'width 0.3s ease, height 0.3s ease, border-radius 0.3s ease',
         '--cw': `${cardW}px`,
         '--ch': `${cardH}px`,
-        '--rank': `${cardW * (isMobile ? 0.20 : 0.16)}px`,
-        '--suit': `${cardW * (isMobile ? 0.15 : 0.12)}px`,
-        '--rankc': `${cardW * 0.30}px`, // centered label (mobile) — bigger, has room
-        '--suitc': `${cardW * 0.23}px`,
+        '--rank': `${cardW * (isMobile ? 0.25 : 0.16)}px`,
+        '--suit': `${cardW * (isMobile ? 0.20 : 0.12)}px`,
         '--lleft': `${cardW * 0.06}px`,
         '--curw': `${Math.max(2, Math.round(cardW * 0.03))}px`,
         '--curh': `${cardH * 0.19}px`,
