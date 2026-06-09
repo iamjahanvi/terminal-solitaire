@@ -120,7 +120,7 @@ const TerminalSolitaire = () => {
   const cardW = 102;
   const cardH = 153;
   const fan = 24; // uniform stacking offset
-  const BOARD_W = 844; // fixed playing-area width (the collapsed size)
+  const BOARD_W = 872; // fixed playing-area width (the collapsed size)
 
   const winCanvasRef = useRef(null);
   const foundationRefs = useRef([]);
@@ -329,8 +329,8 @@ const TerminalSolitaire = () => {
       ctx.strokeStyle = card.color === 'red' ? '#ff5555' : '#ffffff';
       ctx.stroke();
 
-      // rank + smaller suit straddling the border in the top-left and bottom-right
-      // corners — with a notch masked out of the border, exactly like the in-game card.
+      // rank + smaller suit seated just inside the top-left and bottom-right
+      // corners — same clean look as the in-game card (no border notch / patch).
       const ink = card.color === 'red' ? '#ff5555' : '#f3f4f6';
       const corner = (flip) => {
         ctx.save();
@@ -338,19 +338,13 @@ const TerminalSolitaire = () => {
         else { ctx.translate(x, y); }
         ctx.font = `500 ${cardW * 0.16}px "Fira Code", monospace`;
         const rankW = ctx.measureText(card.label).width;
-        ctx.font = `500 ${cardW * 0.12}px "Fira Code", monospace`;
-        const suitW = ctx.measureText(card.symbol).width;
         const startX = cardW * 0.08;
-        // notch: mask the border line behind the label
-        ctx.fillStyle = '#1e1e1e';
-        ctx.fillRect(startX - 1, -cardH * 0.1, rankW + 1 + suitW + 3, cardH * 0.2);
-        // rank + suit, vertically centered on the card edge (straddling)
+        const topY = cardH * 0.05;
         ctx.fillStyle = ink;
-        ctx.textBaseline = 'middle';
-        ctx.font = `500 ${cardW * 0.16}px "Fira Code", monospace`;
-        ctx.fillText(card.label, startX, 0);
+        ctx.textBaseline = 'top';
+        ctx.fillText(card.label, startX, topY);
         ctx.font = `500 ${cardW * 0.12}px "Fira Code", monospace`;
-        ctx.fillText(card.symbol, startX + rankW + 1, 1);
+        ctx.fillText(card.symbol, startX + rankW + 1, topY + cardH * 0.012);
         ctx.restore();
       };
       corner(false);
@@ -775,9 +769,9 @@ const TerminalSolitaire = () => {
 
   return (
     <div
-      className="terminal-bg border border-gray-700 flex flex-col overflow-hidden fixed inset-0 m-auto z-40"
+      className="terminal-bg border border-[#2d2d2d] flex flex-col overflow-hidden fixed inset-0 m-auto z-40"
       style={{
-        width: maximized ? '100%' : 'min(58rem, calc(100% - 2rem))',
+        width: maximized ? '100%' : 'min(60rem, calc(100% - 2rem))',
         height: maximized ? '100%' : 'min(800px, calc(100% - 2rem))',
         borderRadius: maximized ? '0px' : '12px',
         boxShadow: maximized ? 'none' : '0 20px 50px rgba(0,0,0,0.5)',
@@ -786,7 +780,7 @@ const TerminalSolitaire = () => {
         '--ch': `${cardH}px`,
         '--rank': `${cardW * 0.16}px`,
         '--suit': `${cardW * 0.12}px`,
-        '--ltop': `${-cardW * 0.08}px`,
+        '--ltop': `${cardW * 0.05}px`,
         '--lleft': `${cardW * 0.06}px`,
         '--curw': `${Math.max(2, Math.round(cardW * 0.03))}px`,
         '--curh': `${cardH * 0.19}px`,
@@ -904,7 +898,7 @@ const TerminalSolitaire = () => {
       )}
 
       {(hasWon || noMoves) && (
-        <div className="terminal-panel absolute bottom-0 left-0 right-0 z-50 bg-[#181818] border-t border-gray-700 font-mono text-xs">
+        <div className="terminal-panel absolute bottom-0 left-0 right-0 z-50 bg-[#181818] border-t border-[#2d2d2d] font-mono text-xs">
           <div className="flex items-center gap-4 px-4 h-7 border-b border-gray-800 text-[11px] uppercase tracking-wider">
             <span className="text-gray-200">Terminal</span>
             <span className="ml-auto normal-case text-gray-600">{hasWon ? 'zsh — exit 0' : 'zsh — exit 1'}</span>
