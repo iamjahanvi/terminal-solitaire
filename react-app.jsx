@@ -79,7 +79,8 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
   }
 
   const textColorClass = card.color === 'red' ? 'text-[#ff5555]' : 'text-gray-100';
-  const labelBase = `absolute px-1 py-2 card-label font-mono font-medium ${textColorClass} flex items-center leading-none`;
+  // Corner straddle labels (desktop). On mobile a single centered label is shown instead.
+  const labelBase = `absolute px-1 py-2 card-label font-mono font-medium ${textColorClass} hidden sm:flex items-center leading-none`;
 
   return (
     <div
@@ -90,11 +91,16 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
       className={`border ${card.color === 'red' ? 'border-[#ff5555]' : 'border-white'} rounded-md box-border cursor-pointer relative bg-[#1e1e1e] touch-none
         ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} ${isDragging ? 'invisible' : ''} transition-transform duration-100`}
     >
-      {showCursor && <span className="card-cursor" style={{ width: 'var(--curw)', height: 'var(--curh)' }} />}
-      <div className={labelBase} style={{ top: 'var(--ltop)', left: 'var(--lleft)', fontSize: 'var(--rank)' }}>
+      {showCursor && <span className="card-cursor max-sm:hidden" style={{ width: 'var(--curw)', height: 'var(--curh)' }} />}
+      <div className="absolute inset-0 flex sm:hidden items-center justify-center">
+        <span className={`font-mono font-semibold leading-none ${textColorClass}`} style={{ fontSize: 'var(--rankc)' }}>
+          {card.label}<span style={{ fontSize: 'var(--suitc)', marginLeft: 2 }}>{card.symbol}</span>{showCursor && <span className="prompt-cursor" />}
+        </span>
+      </div>
+      <div className={labelBase} style={{ top: 0, left: 'var(--lleft)', transform: 'translateY(-50%)', fontSize: 'var(--rank)' }}>
         {card.label}<span style={{ marginLeft: 1, fontSize: 'var(--suit)' }}>{card.symbol}</span>
       </div>
-      <div className={`${labelBase} transform rotate-180`} style={{ bottom: 'var(--ltop)', right: 'var(--lleft)', fontSize: 'var(--rank)' }}>
+      <div className={labelBase} style={{ bottom: 0, right: 'var(--lleft)', transform: 'translateY(50%) rotate(180deg)', fontSize: 'var(--rank)' }}>
         {card.label}<span style={{ marginLeft: 1, fontSize: 'var(--suit)' }}>{card.symbol}</span>
       </div>
     </div>
@@ -115,16 +121,51 @@ const TerminalSolitaire = () => {
   const [maximized, setMaximized] = useState(false);
   const [panelExiting, setPanelExiting] = useState(false); // slide the game-over panel down on ENTER
 
-  // Fixed board metrics — the playing area stays the same size whether the window
-  // is collapsed or maximized; expanding just adds empty margins around it.
-  const cardW = 102;
-  const cardH = 153;
-  const fan = 24; // uniform stacking offset
-  const BOARD_W = 872; // fixed playing-area width (the collapsed size)
+  // Layout mode. Desktop (>=640px) keeps a fixed-size board that never rescales;
+  // mobile (<640px) goes full-screen and scales cards to fit 7 columns across.
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
+  const [isLandscape, setIsLandscape] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches);
+  const [boardSize, setBoardSize] = useState(() => ({
+    w: typeof window !== 'undefined' ? Math.min(872, window.innerWidth - 24) : 872,
+    tableauH: 600,
+  }));
+  const [headerH, setHeaderH] = useState(32);
+
+  const DESKTOP_BOARD_W = 872;
+  const MOBILE_GAP = 10;
+
+  // Card geometry is derived from a single cardW; everything else (labels, cursor,
+  // win cascade) scales off it, so making cardW responsive flows everywhere.
+  let cardW, cardH, defaultFan;
+  if (isMobile) {
+    cardW = Math.max(38, Math.floor((boardSize.w - 6 * MOBILE_GAP) / 7));
+    cardH = Math.round(cardW * 1.5);
+    defaultFan = Math.round(cardH * 0.26);
+  } else {
+    cardW = 102;
+    cardH = 153;
+    defaultFan = 24;
+  }
+  const BOARD_W = isMobile ? boardSize.w : DESKTOP_BOARD_W;
+
+  // Adaptive fan (mobile only): tighten a column's overlap just enough to fit the
+  // available height, never below the rank-label height. Desktop is always uniform.
+  const minFan = Math.max(Math.round(cardH * 0.16), Math.round(cardW * 0.24));
+  const fanFor = (n) => {
+    if (!isMobile || n <= 1) return defaultFan;
+    const fit = (boardSize.tableauH - cardH) / (n - 1);
+    return Math.max(minFan, Math.min(defaultFan, fit));
+  };
 
   const winCanvasRef = useRef(null);
   const winPanelRef = useRef(null);
   const foundationRefs = useRef([]);
+  const boardInnerRef = useRef(null); // the 7-column wrapper (measured for width)
+  const tableauRef = useRef(null);    // the tableau row (measured for available height)
+  const headerRef = useRef(null);     // title/control bar (measured to place the canvas)
+  const lastTapRef = useRef({ t: 0, key: '' }); // manual double-tap detection on touch
 
   // drag-and-drop (coexists with click-to-move)
   const [drag, setDrag] = useState(null); // { cards, source, x, y } while a drag is active
@@ -155,9 +196,54 @@ const TerminalSolitaire = () => {
     setMoveCount(0);
   }, []);
 
+  // Dismiss the game-over panel and deal a fresh game (ENTER on desktop, tap on
+  // mobile — which has no keyboard, so this is the only way out of a win/loss there).
+  const dismissPanel = useCallback(() => {
+    setPanelExiting((exiting) => {
+      if (exiting) return exiting; // already sliding out
+      setTimeout(() => { startNewGame(); setPanelExiting(false); }, 240);
+      return true;
+    });
+  }, [startNewGame]);
+
   useEffect(() => {
     startNewGame();
   }, [startNewGame]);
+
+  // Track layout mode + orientation.
+  useEffect(() => {
+    const mqW = window.matchMedia('(max-width: 639px)');
+    const mqO = window.matchMedia('(orientation: landscape)');
+    const onW = () => setIsMobile(mqW.matches);
+    const onO = () => setIsLandscape(mqO.matches);
+    mqW.addEventListener('change', onW);
+    mqO.addEventListener('change', onO);
+    return () => { mqW.removeEventListener('change', onW); mqO.removeEventListener('change', onO); };
+  }, []);
+
+  // Measure the board (width drives card size; tableau height drives the adaptive
+  // fan; header height places the win-cascade canvas). Debounced via rAF.
+  useEffect(() => {
+    const inner = boardInnerRef.current;
+    if (!inner) return;
+    let raf = 0;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        setBoardSize({
+          w: inner.clientWidth,
+          tableauH: tableauRef.current ? tableauRef.current.clientHeight : 600,
+        });
+        if (headerRef.current) setHeaderH(headerRef.current.offsetHeight);
+      });
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(inner);
+    if (tableauRef.current) ro.observe(tableauRef.current);
+    if (headerRef.current) ro.observe(headerRef.current);
+    measure();
+    return () => { ro.disconnect(); cancelAnimationFrame(raf); };
+  }, [isMobile]);
 
   useEffect(() => {
     const totalInFoundations = foundations.reduce((sum, f) => sum + f.length, 0);
@@ -208,13 +294,12 @@ const TerminalSolitaire = () => {
   useEffect(() => {
     if (!noMoves && !hasWon) return;
     const onKey = (e) => {
-      if (e.key !== 'Enter' || panelExiting) return;
-      setPanelExiting(true); // slide the panel down, then deal a fresh game
-      setTimeout(() => { startNewGame(); setPanelExiting(false); }, 240);
+      if (e.key !== 'Enter') return;
+      dismissPanel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [noMoves, hasWon, panelExiting, startNewGame]);
+  }, [noMoves, hasWon, dismissPanel]);
 
   // Global pointer listeners drive drag-and-drop (mouse + touch via Pointer Events).
   useEffect(() => {
@@ -222,12 +307,12 @@ const TerminalSolitaire = () => {
       const d = dragRef.current;
       if (!d) return;
       if (!d.moved) {
-        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 5) return;
+        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < (d.touch ? 8 : 5)) return;
         d.moved = true;
         didDragRef.current = true;
         const sel = window.getSelection && window.getSelection();
         if (sel) sel.removeAllRanges();
-        setDrag({ cards: d.cards, source: d.source, x: e.clientX - d.offsetX, y: e.clientY - d.offsetY });
+        setDrag({ cards: d.cards, source: d.source, x: e.clientX - d.offsetX, y: e.clientY - d.offsetY, fan: d.fan });
       } else if (floatRef.current) {
         e.preventDefault();
         floatRef.current.style.left = `${e.clientX - d.offsetX}px`;
@@ -271,12 +356,13 @@ const TerminalSolitaire = () => {
         setTimeout(after, 160);
       };
 
-      if (best && bestDist < 70) {
+      if (best && bestDist < Math.max(40, g.cardW * 0.7)) {
         // glide into the destination slot, then commit
         let targetTop = best.rect.top;
         if (best.area === 'tableau') {
           const len = g.tableaus[best.idx].length;
-          targetTop = best.rect.top + (len === 0 ? 0 : len * g.fan);
+          const f = g.fanFor(len + d.cards.length);
+          targetTop = best.rect.top + (len === 0 ? 0 : len * f);
         }
         settle(best.rect.left, targetTop, () => {
           g.executeMove(d.source, { area: best.area, index: best.idx }, d.cards);
@@ -602,6 +688,8 @@ const TerminalSolitaire = () => {
       startX: e.clientX, startY: e.clientY,
       offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top,
       origin: { left: rect.left, top: rect.top },
+      fan: area === 'tableau' ? fanFor(tableaus[index].length) : defaultFan,
+      touch: e.pointerType === 'touch',
       moved: false,
     };
   };
@@ -634,6 +722,18 @@ const TerminalSolitaire = () => {
   const handleCardClick = (e, area, index, cardIndex) => {
     e.stopPropagation();
     if (didDragRef.current) { didDragRef.current = false; return; } // a drag just happened; ignore the click
+
+    // Manual double-tap → send to foundation (mobile; native dblclick is flaky on touch).
+    if (isMobile) {
+      const key = `${area}:${index}:${cardIndex}`;
+      const now = Date.now();
+      if (now - lastTapRef.current.t < 300 && lastTapRef.current.key === key) {
+        lastTapRef.current = { t: 0, key: '' };
+        sendTopToFoundation(area, index, cardIndex);
+        return;
+      }
+      lastTapRef.current = { t: now, key };
+    }
 
     if (!selected) {
       let card;
@@ -714,8 +814,8 @@ const TerminalSolitaire = () => {
     setSelected(null);
   };
 
-  const handleDoubleClick = (e, area, index, cardIndex) => {
-    e.stopPropagation();
+  // Send a top card straight to its foundation (the double-click / double-tap action).
+  const sendTopToFoundation = (area, index, cardIndex) => {
     let card;
     if (area === 'waste') card = waste[waste.length - 1];
     else if (area === 'tableau' && cardIndex === tableaus[index].length - 1) card = tableaus[index][cardIndex];
@@ -727,6 +827,12 @@ const TerminalSolitaire = () => {
       executeMove({ area, index, cardIndex }, { area: 'foundation', index: targetFoundationIndex }, [card]);
       setSelected(null);
     }
+  };
+
+  const handleDoubleClick = (e, area, index, cardIndex) => {
+    e.stopPropagation();
+    if (isMobile) return; // mobile drives this via manual double-tap detection (dblclick is unreliable on touch)
+    sendTopToFoundation(area, index, cardIndex);
   };
 
   const executeMove = (source, dest, cards, silent = false) => {
@@ -788,46 +894,59 @@ const TerminalSolitaire = () => {
     return false;
   };
 
-  gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves, cardW, cardH, fan };
+  gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves, cardW, cardH, fanFor };
 
   return (
     <div
-      className="terminal-bg border border-[#2d2d2d] flex flex-col overflow-hidden fixed inset-0 m-auto z-40"
+      className={`terminal-bg flex flex-col overflow-hidden fixed inset-0 m-auto z-40 ${isMobile ? '' : 'border border-[#2d2d2d]'}`}
       style={{
-        width: maximized ? '100%' : 'min(60rem, calc(100% - 2rem))',
-        height: maximized ? '100%' : 'min(800px, calc(100% - 2rem))',
-        borderRadius: maximized ? '0px' : '12px',
-        boxShadow: maximized ? 'none' : '0 20px 50px rgba(0,0,0,0.5)',
-        transition: 'width 0.3s ease, height 0.3s ease, border-radius 0.3s ease',
+        width: isMobile ? '100%' : (maximized ? '100%' : 'min(60rem, calc(100% - 2rem))'),
+        height: isMobile ? '100dvh' : (maximized ? '100%' : 'min(800px, calc(100% - 2rem))'),
+        borderRadius: isMobile ? '0px' : (maximized ? '0px' : '12px'),
+        boxShadow: isMobile ? 'none' : (maximized ? 'none' : '0 20px 50px rgba(0,0,0,0.5)'),
+        transition: isMobile ? 'none' : 'width 0.3s ease, height 0.3s ease, border-radius 0.3s ease',
         '--cw': `${cardW}px`,
         '--ch': `${cardH}px`,
-        '--rank': `${cardW * 0.16}px`,
-        '--suit': `${cardW * 0.12}px`,
-        '--ltop': `${-cardW * 0.139}px`,
+        '--rank': `${cardW * (isMobile ? 0.20 : 0.16)}px`,
+        '--suit': `${cardW * (isMobile ? 0.15 : 0.12)}px`,
+        '--rankc': `${cardW * 0.30}px`, // centered label (mobile) — bigger, has room
+        '--suitc': `${cardW * 0.23}px`,
         '--lleft': `${cardW * 0.06}px`,
         '--curw': `${Math.max(2, Math.round(cardW * 0.03))}px`,
         '--curh': `${cardH * 0.19}px`,
       }}
     >
-      <div className="bg-[#2d2d2d] h-8 flex items-center px-4 relative flex-shrink-0 border-b border-black">
-        <div className="flex gap-2 z-10">
-          <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
-          <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
-          <div onClick={() => setMaximized((m) => !m)} title="Toggle full screen" className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] cursor-pointer"></div>
+      {isMobile ? (
+        <div
+          ref={headerRef}
+          className="bg-[#2d2d2d] flex items-center justify-between px-4 pb-2 flex-shrink-0 border-b border-black text-xs text-gray-400 uppercase tracking-wide"
+          style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+        >
+          <span className="text-gray-500">Moves: {moveCount}</span>
+          <button onClick={showHint} disabled={hintsLeft === 0} className="cursor-pointer active:text-white disabled:opacity-40 disabled:cursor-not-allowed">Hint ({hintsLeft})</button>
+          <button onClick={startNewGame} className="cursor-pointer active:text-white">Restart</button>
         </div>
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-gray-400 text-sm font-semibold tracking-wider">Solitaire</span>
+      ) : (
+        <div ref={headerRef} className="bg-[#2d2d2d] h-8 flex items-center px-4 relative flex-shrink-0 border-b border-black">
+          <div className="flex gap-2 z-10">
+            <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
+            <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
+            <div onClick={() => setMaximized((m) => !m)} title="Toggle full screen" className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] cursor-pointer"></div>
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-gray-400 text-sm font-semibold tracking-wider">Solitaire</span>
+          </div>
+          <div className="ml-auto z-10 flex gap-4 text-xs text-gray-500">
+            <button onClick={showHint} disabled={hintsLeft === 0} className="hover:text-white transition-colors uppercase cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Hint ({hintsLeft})</button>
+            <button onClick={startNewGame} className="hover:text-white transition-colors uppercase cursor-pointer">Restart</button>
+            <span>Moves: {moveCount}</span>
+          </div>
         </div>
-        <div className="ml-auto z-10 flex gap-4 text-xs text-gray-500">
-          <button onClick={showHint} disabled={hintsLeft === 0} className="hover:text-white transition-colors uppercase cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Hint ({hintsLeft})</button>
-          <button onClick={startNewGame} className="hover:text-white transition-colors uppercase cursor-pointer">Restart</button>
-          <span>Moves: {moveCount}</span>
-        </div>
-      </div>
+      )}
 
-      <div className={`flex-1 p-6 sm:p-10 flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
-        <div className="w-full mx-auto flex flex-col flex-1 min-h-0" style={{ maxWidth: BOARD_W }}>
-        <div className="flex justify-around items-start mb-12 flex-shrink-0">
+      <div className={`flex-1 ${isMobile ? 'px-2 pt-6 pb-2' : 'p-6 sm:p-10'} flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
+        <div ref={boardInnerRef} className="w-full mx-auto flex flex-col flex-1 min-h-0" style={{ maxWidth: isMobile ? '100%' : DESKTOP_BOARD_W }}>
+        <div className={`flex justify-around items-start ${isMobile ? 'mb-4' : 'mb-12'} flex-shrink-0`}>
           {/* col 1: stock */}
           <div
             style={{ width: 'var(--cw)', height: 'var(--ch)' }}
@@ -835,7 +954,7 @@ const TerminalSolitaire = () => {
             onClick={handleStockClick}
           >
             {stock.length === 0 && (
-              <span className="text-white/35 font-mono text-xs select-none">[R]</span>
+              <span className="text-white/35 font-mono text-xs select-none">{isMobile ? '↻' : '[R]'}</span>
             )}
           </div>
 
@@ -878,7 +997,7 @@ const TerminalSolitaire = () => {
           ))}
         </div>
 
-        <div className="flex justify-around flex-1 overflow-x-auto pt-4 pb-10">
+        <div ref={tableauRef} className={`flex justify-around flex-1 ${isMobile ? 'overflow-x-hidden pt-2 pb-2' : 'overflow-x-auto pt-4 pb-10'}`}>
           {tableaus.map((tableau, tIndex) => (
             <div key={`tableau-${tIndex}`} data-drop={`tableau:${tIndex}`} className="relative flex flex-col flex-shrink-0" style={{ width: 'var(--cw)', minHeight: cardH }}>
               {tableau.length === 0 || (drag && drag.source.area === 'tableau' && drag.source.index === tIndex && drag.source.cardIndex === 0) ? (
@@ -889,7 +1008,7 @@ const TerminalSolitaire = () => {
                     key={card.id}
                     style={{
                       position: cIndex === 0 ? 'relative' : 'absolute',
-                      top: cIndex === 0 ? '0' : `${cIndex * fan}px`,
+                      top: cIndex === 0 ? '0' : `${cIndex * fanFor(tableau.length)}px`,
                       zIndex: cIndex
                     }}
                   >
@@ -915,13 +1034,18 @@ const TerminalSolitaire = () => {
       {hasWon && (
         <canvas
           ref={winCanvasRef}
-          className="absolute top-8 left-0 w-full z-40 pointer-events-none"
-          style={{ height: 'calc(100% - 2rem)' }}
+          className="absolute left-0 w-full z-40 pointer-events-none"
+          style={{ top: headerH, height: `calc(100% - ${headerH}px)` }}
         />
       )}
 
       {(hasWon || noMoves) && (
-        <div ref={winPanelRef} className={`terminal-panel ${panelExiting ? 'panel-exit' : ''} absolute bottom-0 left-0 right-0 z-50 bg-[#181818] border-t border-[#2d2d2d] font-mono text-xs`}>
+        <div
+          ref={winPanelRef}
+          onClick={dismissPanel}
+          className={`terminal-panel ${panelExiting ? 'panel-exit' : ''} absolute bottom-0 left-0 right-0 z-50 bg-[#181818] border-t border-[#2d2d2d] font-mono text-xs cursor-pointer`}
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <div className="flex items-center gap-4 px-4 h-7 border-b border-gray-800 text-[11px] uppercase tracking-wider">
             <span className="text-gray-200">Terminal</span>
             <span className="ml-auto normal-case text-gray-600">{hasWon ? 'zsh — exit 0' : 'zsh — exit 1'}</span>
@@ -932,14 +1056,14 @@ const TerminalSolitaire = () => {
                 <p className="text-[#00ff66]">solitaire: all 52 cards sorted</p>
                 <p className="text-[#00ff66]">solitaire: you win</p>
                 <p className="text-gray-500">exit status 0 · {moveCount} moves</p>
-                <p className="mt-2 text-gray-300">press [ENTER] to play again<span className="prompt-cursor" /></p>
+                <p className="mt-2 text-gray-300">{isMobile ? 'tap to play again' : 'press [ENTER] to play again'}<span className="prompt-cursor" /></p>
               </>
             ) : (
               <>
                 <p className="text-[#ff5555]">solitaire: no legal moves remaining</p>
                 <p className="text-[#ff5555]">solitaire: deadlock — cannot continue</p>
                 <p className="text-gray-500">exit status 1 · {moveCount} moves</p>
-                <p className="mt-2 text-gray-300">press [ENTER] to restart<span className="prompt-cursor" /></p>
+                <p className="mt-2 text-gray-300">{isMobile ? 'tap to restart' : 'press [ENTER] to restart'}<span className="prompt-cursor" /></p>
               </>
             )}
           </div>
@@ -949,10 +1073,21 @@ const TerminalSolitaire = () => {
       {drag && (
         <div ref={floatRef} className="fixed z-[60] pointer-events-none" style={{ left: drag.x, top: drag.y }}>
           {drag.cards.map((card, i) => (
-            <div key={card.id} style={{ position: i === 0 ? 'relative' : 'absolute', top: i === 0 ? 0 : `${i * fan}px`, left: 0 }}>
+            <div key={card.id} style={{ position: i === 0 ? 'relative' : 'absolute', top: i === 0 ? 0 : `${i * drag.fan}px`, left: 0 }}>
               <Card card={card} />
             </div>
           ))}
+        </div>
+      )}
+
+      {isMobile && isLandscape && (
+        <div
+          className="fixed inset-0 z-[70] terminal-bg flex flex-col items-center justify-center gap-3 text-center px-8"
+          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <span className="text-5xl text-[#00ff66]" style={{ animation: 'spin 2.4s linear infinite' }}>↻</span>
+          <p className="font-mono text-gray-300 text-sm">rotate to portrait</p>
+          <p className="font-mono text-gray-600 text-xs">solitaire needs a taller screen</p>
         </div>
       )}
     </div>
@@ -968,7 +1103,8 @@ const App = () => {
 
     const style = document.createElement('style');
     style.textContent = `
-      body { background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/wallpaper.png') center / cover no-repeat fixed; color: #e0e0e0; margin: 0; overflow: hidden; font-family: 'Fira Code', monospace; -webkit-tap-highlight-color: transparent; }
+      html, body { height: 100%; }
+      body { background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/wallpaper.png') center / cover no-repeat fixed; color: #e0e0e0; margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-touch-callout: none; touch-action: manipulation; font-family: 'Fira Code', monospace; -webkit-tap-highlight-color: transparent; }
       .terminal-bg { background-color: #1e1e1e; }
       .striped-bg { background: repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(150, 150, 150, 0.16) 4px, rgba(150, 150, 150, 0.16) 5px); }
       .card-label { background: linear-gradient(to bottom, rgba(30,30,30,0) 0%, #1e1e1e 28%, #1e1e1e 72%, rgba(30,30,30,0) 100%); }
@@ -980,6 +1116,7 @@ const App = () => {
       .card-cursor { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 18px; background: #00ff66; animation: blink 1s step-end infinite; }
       .prompt-cursor { display: inline-block; width: 2px; height: 1.05em; margin-left: 4px; background: #00ff66; vertical-align: text-bottom; animation: blink 1s step-end infinite; }
       @keyframes blink { 50% { opacity: 0; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
       .terminal-panel { animation: slideUp 0.18s ease-out; }
       @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
       .panel-exit { animation: slideDown 0.24s ease-in forwards; }
