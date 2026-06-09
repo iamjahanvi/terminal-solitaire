@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 const SUITS = [
   { id: 'spades', symbol: '♠', color: 'white' },
@@ -620,8 +619,7 @@ const TerminalSolitaire = () => {
     setHint(null);
     if (stock.length > 0) {
       const newStock = [...stock];
-      const card = newStock.pop();
-      card.isFaceUp = true;
+      const card = { ...newStock.pop(), isFaceUp: true };
       setStock(newStock);
       setWaste([...waste, card]);
       setMoveCount(m => m + 1);
@@ -996,13 +994,9 @@ const App = () => {
   }, []);
 
   return (
-    <Router basename="/">
-      <div className="w-full min-h-screen flex items-center justify-center p-4 sm:p-8 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<TerminalSolitaire />} />
-        </Routes>
-      </div>
-    </Router>
+    <div className="w-full min-h-screen flex items-center justify-center p-4 sm:p-8 overflow-hidden">
+      <TerminalSolitaire />
+    </div>
   );
 };
 
