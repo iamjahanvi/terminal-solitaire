@@ -161,6 +161,7 @@
             const [hint, setHint] = useState(null);
             const [hintsLeft, setHintsLeft] = useState(3);
             const [moveCount, setMoveCount] = useState(0);
+            const [maximized, setMaximized] = useState(false);
 
             const winCanvasRef = useRef(null);
             const foundationRefs = useRef([]);
@@ -797,7 +798,7 @@
                     return (
                         <div 
                             onClick={onClick}
-                            className={`w-16 h-24 border rounded-md box-border cursor-pointer ${isHint ? 'border-amber-400 ring-2 ring-amber-400 z-20' : 'border-gray-600/50'}`}
+                            className={`w-16 h-24 border rounded-md box-border cursor-pointer ${isHint ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : 'border-gray-600/50'}`}
                         />
                     );
                 }
@@ -807,7 +808,7 @@
                         <div 
                             onClick={onClick}
                             className={`w-16 h-24 border border-white rounded-md box-border cursor-pointer bg-[#1e1e1e] overflow-hidden
-                            ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-amber-400 z-20' : ''} transition-transform duration-100`}
+                            ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} transition-transform duration-100`}
                         >
                              {}
                              <div className="w-full h-full striped-bg"></div>
@@ -823,7 +824,7 @@
                         onDoubleClick={onDoubleClick}
                         onPointerDown={onPointerDown}
                         className={`w-16 h-24 border ${card.color === 'red' ? 'border-[#ff5555]' : 'border-white'} rounded-md box-border cursor-pointer relative bg-[#1e1e1e] touch-none
-                        ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-amber-400 z-20' : ''} ${isDragging ? 'invisible' : ''} transition-transform duration-100`}
+                        ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} ${isDragging ? 'invisible' : ''} transition-transform duration-100`}
                     >
                         {showCursor && <span className="card-cursor" />}
                         <div className={`absolute -top-3 left-1 px-0.5 text-sm font-mono font-medium ${textColorClass} bg-[#1e1e1e] flex items-center leading-none`}>
@@ -841,13 +842,13 @@
             gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves };
 
             return (
-                <div className="w-full max-w-4xl terminal-bg rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-gray-700 relative flex flex-col overflow-hidden h-[800px] max-h-screen">
+                <div className={`terminal-bg border border-gray-700 flex flex-col overflow-hidden ${maximized ? 'fixed inset-0 z-50 rounded-none' : 'relative w-full max-w-4xl rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] h-[800px] max-h-screen'}`}>
                     {}
                     <div className="bg-[#2d2d2d] h-8 flex items-center px-4 relative flex-shrink-0 border-b border-black">
                         <div className="flex gap-2 z-10">
                             <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
                             <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
-                            <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]"></div>
+                            <div onClick={() => setMaximized((m) => !m)} title="Toggle full screen" className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] cursor-pointer"></div>
                         </div>
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <span className="text-gray-400 text-sm font-semibold tracking-wider">Solitaire</span>
@@ -868,7 +869,7 @@
                             <div className="flex gap-4">
                                 {}
                                 <div 
-                                    className={`w-16 h-24 border rounded-md cursor-pointer flex items-center justify-center ${stock.length > 0 ? 'striped-bg shadow-lg' : ''} ${hint && hint.from && hint.from.area === 'stock' ? 'border-amber-400 ring-2 ring-amber-400 z-20' : stock.length > 0 ? 'border-white' : 'border-gray-600/50'}`}
+                                    className={`w-16 h-24 border rounded-md cursor-pointer flex items-center justify-center ${stock.length > 0 ? 'striped-bg shadow-lg' : ''} ${hint && hint.from && hint.from.area === 'stock' ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : stock.length > 0 ? 'border-white' : 'border-gray-600/50'}`}
                                     onClick={handleStockClick}
                                 >
                                     {stock.length === 0 && (

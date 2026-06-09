@@ -54,11 +54,14 @@ const shuffle = (array) => {
 };
 
 const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCursor, isHint, isDragging, isEmptyPlaceholder }) => {
+  const size = { width: 'var(--cw)', height: 'var(--ch)' };
+
   if (isEmptyPlaceholder) {
     return (
       <div
         onClick={onClick}
-        className={`w-16 h-24 border rounded-md box-border cursor-pointer ${isHint ? 'border-amber-400 ring-2 ring-amber-400 z-20' : 'border-gray-600/50'}`}
+        style={size}
+        className={`border rounded-md box-border cursor-pointer ${isHint ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : 'border-gray-600/50'}`}
       />
     );
   }
@@ -67,8 +70,9 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
     return (
       <div
         onClick={onClick}
-        className={`w-16 h-24 border border-white rounded-md box-border cursor-pointer bg-[#1e1e1e] overflow-hidden
-          ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-amber-400 z-20' : ''} transition-transform duration-100`}
+        style={size}
+        className={`border border-white rounded-md box-border cursor-pointer bg-[#1e1e1e] overflow-hidden
+          ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} transition-transform duration-100`}
       >
         <div className="w-full h-full striped-bg"></div>
       </div>
@@ -76,21 +80,23 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
   }
 
   const textColorClass = card.color === 'red' ? 'text-[#ff5555]' : 'text-gray-100';
+  const labelBase = `absolute px-0.5 font-mono font-medium ${textColorClass} bg-[#1e1e1e] flex items-center leading-none`;
 
   return (
     <div
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
-      className={`w-16 h-24 border ${card.color === 'red' ? 'border-[#ff5555]' : 'border-white'} rounded-md box-border cursor-pointer relative bg-[#1e1e1e] touch-none
-        ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-amber-400 z-20' : ''} ${isDragging ? 'invisible' : ''} transition-transform duration-100`}
+      style={size}
+      className={`border ${card.color === 'red' ? 'border-[#ff5555]' : 'border-white'} rounded-md box-border cursor-pointer relative bg-[#1e1e1e] touch-none
+        ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} ${isDragging ? 'invisible' : ''} transition-transform duration-100`}
     >
-      {showCursor && <span className="card-cursor" />}
-      <div className={`absolute -top-3 left-1 px-0.5 text-sm font-mono font-medium ${textColorClass} bg-[#1e1e1e] flex items-center leading-none`}>
-        {card.label}<span className="ml-[1px] text-xs">{card.symbol}</span>
+      {showCursor && <span className="card-cursor" style={{ width: 'var(--curw)', height: 'var(--curh)' }} />}
+      <div className={labelBase} style={{ top: 'var(--ltop)', left: 'var(--lleft)', fontSize: 'var(--rank)' }}>
+        {card.label}<span style={{ marginLeft: 1, fontSize: 'var(--suit)' }}>{card.symbol}</span>
       </div>
-      <div className={`absolute -bottom-3 right-1 px-0.5 text-sm font-mono font-medium ${textColorClass} bg-[#1e1e1e] flex items-center leading-none transform rotate-180`}>
-        {card.label}<span className="ml-[1px] text-xs">{card.symbol}</span>
+      <div className={`${labelBase} transform rotate-180`} style={{ bottom: 'var(--ltop)', right: 'var(--lleft)', fontSize: 'var(--rank)' }}>
+        {card.label}<span style={{ marginLeft: 1, fontSize: 'var(--suit)' }}>{card.symbol}</span>
       </div>
     </div>
   );
@@ -107,6 +113,19 @@ const TerminalSolitaire = () => {
   const [hint, setHint] = useState(null);
   const [hintsLeft, setHintsLeft] = useState(3);
   const [moveCount, setMoveCount] = useState(0);
+  const [maximized, setMaximized] = useState(false);
+
+  // responsive card-size unit — everything (card w/h, stack offsets, labels,
+  // gaps, cascade, drag math) derives from cardW so it scales to fill the window.
+  const [cardW, setCardW] = useState(64);
+  const [boardH, setBoardH] = useState(560); // usable content height (clientHeight - padding)
+  const cardH = Math.round(cardW * 1.5);
+  const MAX_STACK = 19; // reserve pile height for the worst-case column → never scrolls
+  // one uniform offset for every card (face-up or face-down), sized so a full MAX_STACK
+  // pile fits the reserved height; the layout is stable (doesn't shift as you play).
+  const fan = Math.round(Math.max(8, Math.min(cardH * 0.32, (boardH - 104 - 2 * cardH) / (MAX_STACK - 1))));
+  const gap = Math.min(16, Math.round(cardW * 0.18)); // space between columns (cap 16px)
+  const boardRef = useRef(null);
 
   const winCanvasRef = useRef(null);
   const foundationRefs = useRef([]);
@@ -143,6 +162,25 @@ const TerminalSolitaire = () => {
   useEffect(() => {
     startNewGame();
   }, [startNewGame]);
+
+  // Measure the board and size cards to fill it (7 columns + 6 gaps).
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const compute = () => {
+      const cw = el.clientWidth - 80; // minus content padding (p-10)
+      const ch = el.clientHeight - 80;
+      if (cw <= 0 || ch <= 0) return;
+      const byWidth = (cw - 96) / 7; // 7 columns + 6 gaps of ≤16px — no horizontal scroll
+      const byHeight = (ch - 248) / 3; // leaves room for a MAX_STACK pile at the min offset
+      setCardW(Math.max(54, Math.min(170, Math.floor(Math.min(byWidth, byHeight)))));
+      setBoardH(ch);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const totalInFoundations = foundations.reduce((sum, f) => sum + f.length, 0);
@@ -224,8 +262,8 @@ const TerminalSolitaire = () => {
 
       // center of the released card
       const fr = floatRef.current ? floatRef.current.getBoundingClientRect() : null;
-      const cx = fr ? fr.left + 32 : d.origin.left + 32;
-      const cy = fr ? fr.top + 48 : d.origin.top + 48;
+      const cx = fr ? fr.left + fr.width / 2 : d.origin.left + g.cardW / 2;
+      const cy = fr ? fr.top + fr.height / 2 : d.origin.top + g.cardH / 2;
 
       // pick the nearest VALID pile to where the card was released
       let best = null;
@@ -257,7 +295,7 @@ const TerminalSolitaire = () => {
         let targetTop = best.rect.top;
         if (best.area === 'tableau') {
           const len = g.tableaus[best.idx].length;
-          targetTop = best.rect.top + (len === 0 ? 0 : len * 26);
+          targetTop = best.rect.top + (len === 0 ? 0 : len * g.fan);
         }
         settle(best.rect.left, targetTop, () => {
           g.executeMove(d.source, { area: best.area, index: best.idx }, d.cards);
@@ -298,10 +336,10 @@ const TerminalSolitaire = () => {
     if (!hasWon) return;
     let rafId;
     let cancelled = false;
-    const CARD_W = 64, CARD_H = 96, GRAVITY = 0.5, BOUNCE = 0.8;
+    const CARD_W = cardW, CARD_H = cardH, GRAVITY = 0.5, BOUNCE = 0.8;
 
     const drawCard = (ctx, x, y, card) => {
-      const rad = 6;
+      const rad = Math.max(4, cardW * 0.09);
       ctx.beginPath();
       ctx.moveTo(x + rad, y);
       ctx.arcTo(x + CARD_W, y, x + CARD_W, y + CARD_H, rad);
@@ -322,20 +360,20 @@ const TerminalSolitaire = () => {
         ctx.save();
         if (flip) { ctx.translate(x + CARD_W, y + CARD_H); ctx.rotate(Math.PI); }
         else { ctx.translate(x, y); }
-        ctx.font = '500 14px "Fira Code", monospace';
+        ctx.font = `500 ${cardW * 0.16}px "Fira Code", monospace`;
         const rankW = ctx.measureText(card.label).width;
-        ctx.font = '500 11px "Fira Code", monospace';
+        ctx.font = `500 ${cardW * 0.12}px "Fira Code", monospace`;
         const suitW = ctx.measureText(card.symbol).width;
-        const startX = 6;
+        const startX = cardW * 0.08;
         // notch: mask the border line behind the label
         ctx.fillStyle = '#1e1e1e';
-        ctx.fillRect(startX - 1, -9, rankW + 1 + suitW + 3, 18);
+        ctx.fillRect(startX - 1, -cardH * 0.1, rankW + 1 + suitW + 3, cardH * 0.2);
         // rank + suit, vertically centered on the card edge (straddling)
         ctx.fillStyle = ink;
         ctx.textBaseline = 'middle';
-        ctx.font = '500 14px "Fira Code", monospace';
+        ctx.font = `500 ${cardW * 0.16}px "Fira Code", monospace`;
         ctx.fillText(card.label, startX, 0);
-        ctx.font = '500 11px "Fira Code", monospace';
+        ctx.font = `500 ${cardW * 0.12}px "Fira Code", monospace`;
         ctx.fillText(card.symbol, startX + rankW + 1, 1);
         ctx.restore();
       };
@@ -355,7 +393,7 @@ const TerminalSolitaire = () => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, W, H);
 
-      const floor = H - 130; // bounce just above the docked terminal panel
+      const floor = H - cardH * 1.35; // bounce just above the docked terminal panel
       const canvasRect = canvas.getBoundingClientRect();
       const starts = foundationRefs.current.map((el) => {
         if (!el) return { x: W * 0.6, y: 8 };
@@ -757,15 +795,32 @@ const TerminalSolitaire = () => {
     return false;
   };
 
-  gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves };
+  gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves, cardW, cardH, fan };
 
   return (
-    <div className="w-full max-w-4xl terminal-bg rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-gray-700 relative flex flex-col overflow-hidden h-[800px] max-h-screen">
+    <div
+      className="terminal-bg border border-gray-700 flex flex-col overflow-hidden fixed inset-0 m-auto z-40"
+      style={{
+        width: maximized ? '100%' : 'min(56rem, calc(100% - 2rem))',
+        height: maximized ? '100%' : 'min(800px, calc(100% - 2rem))',
+        borderRadius: maximized ? '0px' : '12px',
+        boxShadow: maximized ? 'none' : '0 20px 50px rgba(0,0,0,0.5)',
+        transition: 'width 0.3s ease, height 0.3s ease, border-radius 0.3s ease',
+        '--cw': `${cardW}px`,
+        '--ch': `${cardH}px`,
+        '--rank': `${cardW * 0.16}px`,
+        '--suit': `${cardW * 0.12}px`,
+        '--ltop': `${-cardW * 0.08}px`,
+        '--lleft': `${cardW * 0.06}px`,
+        '--curw': `${Math.max(2, Math.round(cardW * 0.03))}px`,
+        '--curh': `${cardH * 0.19}px`,
+      }}
+    >
       <div className="bg-[#2d2d2d] h-8 flex items-center px-4 relative flex-shrink-0 border-b border-black">
         <div className="flex gap-2 z-10">
           <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
           <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
-          <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]"></div>
+          <div onClick={() => setMaximized((m) => !m)} title="Toggle full screen" className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] cursor-pointer"></div>
         </div>
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span className="text-gray-400 text-sm font-semibold tracking-wider">Solitaire</span>
@@ -777,58 +832,61 @@ const TerminalSolitaire = () => {
         </div>
       </div>
 
-      <div className={`flex-1 p-6 sm:p-10 flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
+      <div ref={boardRef} className={`flex-1 p-6 sm:p-10 flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
         <div className="flex justify-between items-start mb-12 flex-shrink-0">
-          <div className="flex gap-4">
-            <div
-              className={`w-16 h-24 border rounded-md cursor-pointer flex items-center justify-center ${stock.length > 0 ? 'striped-bg shadow-lg' : ''} ${hint && hint.from && hint.from.area === 'stock' ? 'border-amber-400 ring-2 ring-amber-400 z-20' : stock.length > 0 ? 'border-white' : 'border-gray-600/50'}`}
-              onClick={handleStockClick}
-            >
-              {stock.length === 0 && (
-                <span className="text-white/35 font-mono text-xs select-none">[R]</span>
-              )}
-            </div>
+          {/* col 1: stock */}
+          <div
+            style={{ width: 'var(--cw)', height: 'var(--ch)' }}
+            className={`border rounded-md cursor-pointer flex items-center justify-center ${stock.length > 0 ? 'striped-bg shadow-lg' : ''} ${hint && hint.from && hint.from.area === 'stock' ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : stock.length > 0 ? 'border-white' : 'border-gray-600/50'}`}
+            onClick={handleStockClick}
+          >
+            {stock.length === 0 && (
+              <span className="text-white/35 font-mono text-xs select-none">[R]</span>
+            )}
+          </div>
 
-            <div className="w-16 h-24 relative">
-              {waste.length === 0 || isDragging('waste', 0, waste.length - 1) ? (
-                <Card isEmptyPlaceholder={true} onClick={() => handleEmptyPileClick('waste', 0)} />
+          {/* col 2: waste */}
+          <div className="relative" style={{ width: 'var(--cw)', height: 'var(--ch)' }}>
+            {waste.length === 0 || isDragging('waste', 0, waste.length - 1) ? (
+              <Card isEmptyPlaceholder={true} onClick={() => handleEmptyPileClick('waste', 0)} />
+            ) : (
+              <Card
+                card={waste[waste.length - 1]}
+                onClick={(e) => handleCardClick(e, 'waste', 0, waste.length - 1)}
+                onDoubleClick={(e) => handleDoubleClick(e, 'waste', 0, waste.length - 1)}
+                onPointerDown={(e) => handlePointerDown(e, 'waste', 0, waste.length - 1)}
+                isSelected={isCardSelected('waste', 0, waste.length - 1)}
+                showCursor={isSelectionHead('waste', 0, waste.length - 1)}
+                isHint={isHintFrom('waste', 0, waste.length - 1)}
+              />
+            )}
+          </div>
+
+          {/* col 3: spacer to align foundations with tableau columns 4-7 */}
+          <div style={{ width: 'var(--cw)', height: 'var(--ch)' }} aria-hidden="true" />
+
+          {/* cols 4-7: foundations */}
+          {foundations.map((foundation, index) => (
+            <div key={`foundation-${index}`} ref={(el) => (foundationRefs.current[index] = el)} data-drop={`foundation:${index}`} className="relative" style={{ width: 'var(--cw)', height: 'var(--ch)' }}>
+              {foundation.length === 0 || isDragging('foundation', index, foundation.length - 1) ? (
+                <Card isEmptyPlaceholder={true} isHint={isHintTo('foundation', index)} onClick={() => handleEmptyPileClick('foundation', index)} />
               ) : (
                 <Card
-                  card={waste[waste.length - 1]}
-                  onClick={(e) => handleCardClick(e, 'waste', 0, waste.length - 1)}
-                  onDoubleClick={(e) => handleDoubleClick(e, 'waste', 0, waste.length - 1)}
-                  onPointerDown={(e) => handlePointerDown(e, 'waste', 0, waste.length - 1)}
-                  isSelected={isCardSelected('waste', 0, waste.length - 1)}
-                  showCursor={isSelectionHead('waste', 0, waste.length - 1)}
-                  isHint={isHintFrom('waste', 0, waste.length - 1)}
+                  card={foundation[foundation.length - 1]}
+                  onClick={(e) => handleCardClick(e, 'foundation', index, foundation.length - 1)}
+                  onPointerDown={(e) => handlePointerDown(e, 'foundation', index, foundation.length - 1)}
+                  isSelected={isCardSelected('foundation', index, foundation.length - 1)}
+                  showCursor={isSelectionHead('foundation', index, foundation.length - 1)}
+                  isHint={isHintTo('foundation', index)}
                 />
               )}
             </div>
-          </div>
-
-          <div className="flex gap-4">
-            {foundations.map((foundation, index) => (
-              <div key={`foundation-${index}`} ref={(el) => (foundationRefs.current[index] = el)} data-drop={`foundation:${index}`} className="w-16 h-24 relative">
-                {foundation.length === 0 || isDragging('foundation', index, foundation.length - 1) ? (
-                  <Card isEmptyPlaceholder={true} isHint={isHintTo('foundation', index)} onClick={() => handleEmptyPileClick('foundation', index)} />
-                ) : (
-                  <Card
-                    card={foundation[foundation.length - 1]}
-                    onClick={(e) => handleCardClick(e, 'foundation', index, foundation.length - 1)}
-                    onPointerDown={(e) => handlePointerDown(e, 'foundation', index, foundation.length - 1)}
-                    isSelected={isCardSelected('foundation', index, foundation.length - 1)}
-                    showCursor={isSelectionHead('foundation', index, foundation.length - 1)}
-                    isHint={isHintTo('foundation', index)}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
 
-        <div className="flex gap-4 sm:gap-6 justify-center sm:justify-between flex-1 overflow-x-auto min-w-max pt-4 pb-10">
+        <div className="flex justify-between flex-1 overflow-x-auto pt-4 pb-10">
           {tableaus.map((tableau, tIndex) => (
-            <div key={`tableau-${tIndex}`} data-drop={`tableau:${tIndex}`} className="w-16 relative flex flex-col" style={{ minHeight: '300px' }}>
+            <div key={`tableau-${tIndex}`} data-drop={`tableau:${tIndex}`} className="relative flex flex-col flex-shrink-0" style={{ width: 'var(--cw)', minHeight: cardH }}>
               {tableau.length === 0 || (drag && drag.source.area === 'tableau' && drag.source.index === tIndex && drag.source.cardIndex === 0) ? (
                 <Card isEmptyPlaceholder={true} isHint={isHintTo('tableau', tIndex)} onClick={() => handleEmptyPileClick('tableau', tIndex)} />
               ) : (
@@ -837,7 +895,7 @@ const TerminalSolitaire = () => {
                     key={card.id}
                     style={{
                       position: cIndex === 0 ? 'relative' : 'absolute',
-                      top: cIndex === 0 ? '0' : `${cIndex * (card.isFaceUp ? 26 : 14)}px`,
+                      top: cIndex === 0 ? '0' : `${cIndex * fan}px`,
                       zIndex: cIndex
                     }}
                   >
@@ -896,7 +954,7 @@ const TerminalSolitaire = () => {
       {drag && (
         <div ref={floatRef} className="fixed z-[60] pointer-events-none" style={{ left: drag.x, top: drag.y }}>
           {drag.cards.map((card, i) => (
-            <div key={card.id} style={{ position: i === 0 ? 'relative' : 'absolute', top: i === 0 ? 0 : `${i * 26}px`, left: 0 }}>
+            <div key={card.id} style={{ position: i === 0 ? 'relative' : 'absolute', top: i === 0 ? 0 : `${i * fan}px`, left: 0 }}>
               <Card card={card} />
             </div>
           ))}
