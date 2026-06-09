@@ -115,17 +115,12 @@ const TerminalSolitaire = () => {
   const [moveCount, setMoveCount] = useState(0);
   const [maximized, setMaximized] = useState(false);
 
-  // responsive card-size unit — everything (card w/h, stack offsets, labels,
-  // gaps, cascade, drag math) derives from cardW so it scales to fill the window.
-  const [cardW, setCardW] = useState(64);
-  const [boardH, setBoardH] = useState(560); // usable content height (clientHeight - padding)
-  const cardH = Math.round(cardW * 1.5);
-  const MAX_STACK = 19; // reserve pile height for the worst-case column → never scrolls
-  // one uniform offset for every card (face-up or face-down), sized so a full MAX_STACK
-  // pile fits the reserved height; the layout is stable (doesn't shift as you play).
-  const fan = Math.round(Math.max(8, Math.min(cardH * 0.32, (boardH - 104 - 2 * cardH) / (MAX_STACK - 1))));
-  const gap = Math.min(16, Math.round(cardW * 0.18)); // space between columns (cap 16px)
-  const boardRef = useRef(null);
+  // Fixed board metrics — the playing area stays the same size whether the window
+  // is collapsed or maximized; expanding just adds empty margins around it.
+  const cardW = 102;
+  const cardH = 153;
+  const fan = 24; // uniform stacking offset
+  const BOARD_W = 844; // fixed playing-area width (the collapsed size)
 
   const winCanvasRef = useRef(null);
   const foundationRefs = useRef([]);
@@ -162,25 +157,6 @@ const TerminalSolitaire = () => {
   useEffect(() => {
     startNewGame();
   }, [startNewGame]);
-
-  // Measure the board and size cards to fill it (7 columns + 6 gaps).
-  useEffect(() => {
-    const el = boardRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const compute = () => {
-      const cw = el.clientWidth - 80; // minus content padding (p-10)
-      const ch = el.clientHeight - 80;
-      if (cw <= 0 || ch <= 0) return;
-      const byWidth = (cw - 96) / 7; // 7 columns + 6 gaps of ≤16px — no horizontal scroll
-      const byHeight = (ch - 248) / 3; // leaves room for a MAX_STACK pile at the min offset
-      setCardW(Math.max(54, Math.min(170, Math.floor(Math.min(byWidth, byHeight)))));
-      setBoardH(ch);
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   useEffect(() => {
     const totalInFoundations = foundations.reduce((sum, f) => sum + f.length, 0);
@@ -801,7 +777,7 @@ const TerminalSolitaire = () => {
     <div
       className="terminal-bg border border-gray-700 flex flex-col overflow-hidden fixed inset-0 m-auto z-40"
       style={{
-        width: maximized ? '100%' : 'min(56rem, calc(100% - 2rem))',
+        width: maximized ? '100%' : 'min(58rem, calc(100% - 2rem))',
         height: maximized ? '100%' : 'min(800px, calc(100% - 2rem))',
         borderRadius: maximized ? '0px' : '12px',
         boxShadow: maximized ? 'none' : '0 20px 50px rgba(0,0,0,0.5)',
@@ -832,8 +808,9 @@ const TerminalSolitaire = () => {
         </div>
       </div>
 
-      <div ref={boardRef} className={`flex-1 p-6 sm:p-10 flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
-        <div className="flex justify-between items-start mb-12 flex-shrink-0">
+      <div className={`flex-1 p-6 sm:p-10 flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
+        <div className="w-full mx-auto flex flex-col flex-1 min-h-0" style={{ maxWidth: BOARD_W }}>
+        <div className="flex justify-around items-start mb-12 flex-shrink-0">
           {/* col 1: stock */}
           <div
             style={{ width: 'var(--cw)', height: 'var(--ch)' }}
@@ -884,7 +861,7 @@ const TerminalSolitaire = () => {
           ))}
         </div>
 
-        <div className="flex justify-between flex-1 overflow-x-auto pt-4 pb-10">
+        <div className="flex justify-around flex-1 overflow-x-auto pt-4 pb-10">
           {tableaus.map((tableau, tIndex) => (
             <div key={`tableau-${tIndex}`} data-drop={`tableau:${tIndex}`} className="relative flex flex-col flex-shrink-0" style={{ width: 'var(--cw)', minHeight: cardH }}>
               {tableau.length === 0 || (drag && drag.source.area === 'tableau' && drag.source.index === tIndex && drag.source.cardIndex === 0) ? (
@@ -914,6 +891,7 @@ const TerminalSolitaire = () => {
               )}
             </div>
           ))}
+        </div>
         </div>
       </div>
 
