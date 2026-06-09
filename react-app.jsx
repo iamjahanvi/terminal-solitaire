@@ -80,7 +80,7 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
   }
 
   const textColorClass = card.color === 'red' ? 'text-[#ff5555]' : 'text-gray-100';
-  const labelBase = `absolute px-0.5 font-mono font-medium ${textColorClass} bg-[#1e1e1e] flex items-center leading-none`;
+  const labelBase = `absolute px-1 py-2 card-label font-mono font-medium ${textColorClass} flex items-center leading-none`;
 
   return (
     <div
@@ -114,6 +114,7 @@ const TerminalSolitaire = () => {
   const [hintsLeft, setHintsLeft] = useState(3);
   const [moveCount, setMoveCount] = useState(0);
   const [maximized, setMaximized] = useState(false);
+  const [panelExiting, setPanelExiting] = useState(false); // slide the game-over panel down on ENTER
 
   // Fixed board metrics — the playing area stays the same size whether the window
   // is collapsed or maximized; expanding just adds empty margins around it.
@@ -123,6 +124,7 @@ const TerminalSolitaire = () => {
   const BOARD_W = 872; // fixed playing-area width (the collapsed size)
 
   const winCanvasRef = useRef(null);
+  const winPanelRef = useRef(null);
   const foundationRefs = useRef([]);
 
   // drag-and-drop (coexists with click-to-move)
@@ -206,10 +208,14 @@ const TerminalSolitaire = () => {
 
   useEffect(() => {
     if (!noMoves && !hasWon) return;
-    const onKey = (e) => { if (e.key === 'Enter') startNewGame(); };
+    const onKey = (e) => {
+      if (e.key !== 'Enter' || panelExiting) return;
+      setPanelExiting(true); // slide the panel down, then deal a fresh game
+      setTimeout(() => { startNewGame(); setPanelExiting(false); }, 240);
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [noMoves, hasWon, startNewGame]);
+  }, [noMoves, hasWon, panelExiting, startNewGame]);
 
   // Global pointer listeners drive drag-and-drop (mouse + touch via Pointer Events).
   useEffect(() => {
@@ -329,8 +335,8 @@ const TerminalSolitaire = () => {
       ctx.strokeStyle = card.color === 'red' ? '#ff5555' : '#ffffff';
       ctx.stroke();
 
-      // rank + smaller suit seated just inside the top-left and bottom-right
-      // corners — same clean look as the in-game card (no border notch / patch).
+      // rank + smaller suit straddling the border in the top-left and bottom-right
+      // corners — same look as the in-game card label.
       const ink = card.color === 'red' ? '#ff5555' : '#f3f4f6';
       const corner = (flip) => {
         ctx.save();
@@ -338,13 +344,27 @@ const TerminalSolitaire = () => {
         else { ctx.translate(x, y); }
         ctx.font = `500 ${cardW * 0.16}px "Fira Code", monospace`;
         const rankW = ctx.measureText(card.label).width;
-        const startX = cardW * 0.08;
-        const topY = cardH * 0.05;
-        ctx.fillStyle = ink;
-        ctx.textBaseline = 'top';
-        ctx.fillText(card.label, startX, topY);
         ctx.font = `500 ${cardW * 0.12}px "Fira Code", monospace`;
-        ctx.fillText(card.symbol, startX + rankW + 1, topY + cardH * 0.012);
+        const suitW = ctx.measureText(card.symbol).width;
+        const startX = cardW * 0.08;
+        // feathered patch: opaque behind the rank/suit, fading to transparent at
+        // the top and bottom edges only (4px side padding, like .card-label)
+        const padX = 4;
+        const patchH = cardH * 0.21;
+        const grad = ctx.createLinearGradient(0, -patchH / 2, 0, patchH / 2);
+        grad.addColorStop(0, 'rgba(30,30,30,0)');
+        grad.addColorStop(0.28, '#1e1e1e');
+        grad.addColorStop(0.72, '#1e1e1e');
+        grad.addColorStop(1, 'rgba(30,30,30,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(startX - padX, -patchH / 2, rankW + 1 + suitW + padX * 2, patchH);
+        // rank + suit, vertically centered on the card edge (straddling)
+        ctx.fillStyle = ink;
+        ctx.textBaseline = 'middle';
+        ctx.font = `500 ${cardW * 0.16}px "Fira Code", monospace`;
+        ctx.fillText(card.label, startX, 0);
+        ctx.font = `500 ${cardW * 0.12}px "Fira Code", monospace`;
+        ctx.fillText(card.symbol, startX + rankW + 1, 1);
         ctx.restore();
       };
       corner(false);
@@ -358,12 +378,16 @@ const TerminalSolitaire = () => {
       const W = canvas.clientWidth;
       const H = canvas.clientHeight;
       if (!W || !H) { rafId = requestAnimationFrame(begin); return; } // wait for layout
-      canvas.width = W;
-      canvas.height = H;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
       const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr); // draw in logical px; crisp on HiDPI / Retina
       ctx.clearRect(0, 0, W, H);
 
-      const floor = H - cardH * 1.35; // bounce just above the docked terminal panel
+      // bounce just above the docked terminal panel (measured, not a cardH guess)
+      const panelH = winPanelRef.current ? winPanelRef.current.offsetHeight : cardH;
+      const floor = H - panelH;
       const canvasRect = canvas.getBoundingClientRect();
       const starts = foundationRefs.current.map((el) => {
         if (!el) return { x: W * 0.6, y: 8 };
@@ -394,6 +418,7 @@ const TerminalSolitaire = () => {
             y: n.sy,
             vx: (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 5),
             vy: -(1 + Math.random() * 5),
+            bounce: BOUNCE * (0.6 + Math.random() * 0.5), // per-card so arc heights vary
           });
           sinceLaunch = 0;
         }
@@ -402,7 +427,7 @@ const TerminalSolitaire = () => {
           c.vy += GRAVITY;
           c.x += c.vx;
           c.y += c.vy;
-          if (c.y + CARD_H >= floor) { c.y = floor - CARD_H; c.vy = -c.vy * BOUNCE; }
+          if (c.y + CARD_H >= floor) { c.y = floor - CARD_H; c.vy = -c.vy * c.bounce; }
           drawCard(ctx, c.x, c.y, c.card);
           if (c.x < -CARD_W || c.x > W) active.splice(k, 1);
         }
@@ -780,7 +805,7 @@ const TerminalSolitaire = () => {
         '--ch': `${cardH}px`,
         '--rank': `${cardW * 0.16}px`,
         '--suit': `${cardW * 0.12}px`,
-        '--ltop': `${cardW * 0.05}px`,
+        '--ltop': `${-cardW * 0.139}px`,
         '--lleft': `${cardW * 0.06}px`,
         '--curw': `${Math.max(2, Math.round(cardW * 0.03))}px`,
         '--curh': `${cardH * 0.19}px`,
@@ -898,7 +923,7 @@ const TerminalSolitaire = () => {
       )}
 
       {(hasWon || noMoves) && (
-        <div className="terminal-panel absolute bottom-0 left-0 right-0 z-50 bg-[#181818] border-t border-[#2d2d2d] font-mono text-xs">
+        <div ref={winPanelRef} className={`terminal-panel ${panelExiting ? 'panel-exit' : ''} absolute bottom-0 left-0 right-0 z-50 bg-[#181818] border-t border-[#2d2d2d] font-mono text-xs`}>
           <div className="flex items-center gap-4 px-4 h-7 border-b border-gray-800 text-[11px] uppercase tracking-wider">
             <span className="text-gray-200">Terminal</span>
             <span className="ml-auto normal-case text-gray-600">{hasWon ? 'zsh — exit 0' : 'zsh — exit 1'}</span>
@@ -947,7 +972,8 @@ const App = () => {
     style.textContent = `
       body { background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/wallpaper.png') center / cover no-repeat fixed; color: #e0e0e0; margin: 0; overflow: hidden; font-family: 'Fira Code', monospace; -webkit-tap-highlight-color: transparent; }
       .terminal-bg { background-color: #1e1e1e; }
-      .striped-bg { background: repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255, 255, 255, 0.4) 4px, rgba(255, 255, 255, 0.4) 5px); }
+      .striped-bg { background: repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(150, 150, 150, 0.16) 4px, rgba(150, 150, 150, 0.16) 5px); }
+      .card-label { background: linear-gradient(to bottom, rgba(30,30,30,0) 0%, #1e1e1e 28%, #1e1e1e 72%, rgba(30,30,30,0) 100%); }
       * { user-select: none; -webkit-user-select: none; }
       ::selection { background: transparent; }
       ::-webkit-scrollbar { width: 8px; }
@@ -958,6 +984,8 @@ const App = () => {
       @keyframes blink { 50% { opacity: 0; } }
       .terminal-panel { animation: slideUp 0.18s ease-out; }
       @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      .panel-exit { animation: slideDown 0.24s ease-in forwards; }
+      @keyframes slideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
     `;
     document.head.appendChild(style);
 
