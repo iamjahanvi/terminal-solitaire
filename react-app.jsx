@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { WindowControls } from './src/desktop/Window.jsx';
 
 const SUITS = [
   { id: 'spades', symbol: '♠', color: 'white' },
@@ -52,15 +53,21 @@ const shuffle = (array) => {
   return array;
 };
 
-const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCursor, isHint, isDragging, isEmptyPlaceholder }) => {
+// Keyboard cursor mapping between the top row (stock, waste, F0..F3 = slots 0..5)
+// and the 7 tableau columns sitting visually beneath them.
+const SLOT_TO_COL = [0, 1, 3, 4, 5, 6];
+const colToSlot = (col) => (col <= 1 ? col : col === 2 ? 1 : col - 1);
+
+const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCursor, isHint, isKbCursor, isDragging, isEmptyPlaceholder }) => {
   const size = { width: 'var(--cw)', height: 'var(--ch)' };
+  const kbRing = isKbCursor ? 'ring-2 ring-[#7dd3fc] z-20' : '';
 
   if (isEmptyPlaceholder) {
     return (
       <div
         onClick={onClick}
         style={size}
-        className={`border rounded-md box-border cursor-pointer ${isHint ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : 'border-gray-600/50'}`}
+        className={`border rounded-md box-border cursor-pointer ${isHint ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : isKbCursor ? 'border-[#7dd3fc] ring-2 ring-[#7dd3fc] z-20' : 'border-gray-600/50'}`}
       />
     );
   }
@@ -71,7 +78,7 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
         onClick={onClick}
         style={size}
         className={`border border-white rounded-md box-border cursor-pointer bg-[#1e1e1e] overflow-hidden
-          ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} transition-transform duration-100`}
+          ${isSelected ? '-translate-y-1 z-10' : ''} ${isHint ? 'ring-2 ring-[#00ff66] z-20' : ''} ${kbRing} transition-transform duration-100`}
       >
         <div className="w-full h-full striped-bg"></div>
       </div>
@@ -101,7 +108,7 @@ const Card = ({ card, onClick, onDoubleClick, onPointerDown, isSelected, showCur
   );
 };
 
-const TerminalSolitaire = () => {
+export const SolitaireGame = ({ active = true }) => {
   const [stock, setStock] = useState([]);
   const [waste, setWaste] = useState([]);
   const [foundations, setFoundations] = useState([[], [], [], []]);
@@ -112,8 +119,9 @@ const TerminalSolitaire = () => {
   const [hint, setHint] = useState(null);
   const [hintsLeft, setHintsLeft] = useState(3);
   const [moveCount, setMoveCount] = useState(0);
-  const [maximized, setMaximized] = useState(false);
   const [panelExiting, setPanelExiting] = useState(false); // slide the game-over panel down on ENTER
+  const [cur, setCur] = useState({ zone: 'tab', col: 0, depth: 0 }); // keyboard cursor
+  const [kbOn, setKbOn] = useState(false); // show the keyboard cursor (hidden during mouse play)
 
   // Layout mode. Desktop (>=640px) keeps a fixed-size board that never rescales;
   // mobile (<640px) goes full-screen and scales cards to fit 7 columns across.
@@ -125,7 +133,6 @@ const TerminalSolitaire = () => {
     w: typeof window !== 'undefined' ? Math.min(872, window.innerWidth - 24) : 872,
     tableauH: 600,
   }));
-  const [headerH, setHeaderH] = useState(32);
 
   const DESKTOP_BOARD_W = 872;
   const MOBILE_GAP = 10;
@@ -156,10 +163,12 @@ const TerminalSolitaire = () => {
   const winCanvasRef = useRef(null);
   const winPanelRef = useRef(null);
   const foundationRefs = useRef([]);
+  const boardKbRef = useRef(null);    // the focusable board surface (keyboard play)
   const boardInnerRef = useRef(null); // the 7-column wrapper (measured for width)
   const tableauRef = useRef(null);    // the tableau row (measured for available height)
-  const headerRef = useRef(null);     // title/control bar (measured to place the canvas)
   const lastTapRef = useRef({ t: 0, key: '' }); // manual double-tap detection on touch
+  const activeRef = useRef(active);   // only the focused window responds to the keyboard
+  activeRef.current = active;
 
   // drag-and-drop (coexists with click-to-move)
   const [drag, setDrag] = useState(null); // { cards, source, x, y } while a drag is active
@@ -188,7 +197,14 @@ const TerminalSolitaire = () => {
     setHint(null);
     setHintsLeft(3);
     setMoveCount(0);
+    setCur({ zone: 'tab', col: 0, depth: 0 });
+    requestAnimationFrame(() => boardKbRef.current && boardKbRef.current.focus({ preventScroll: true }));
   }, []);
+
+  // Keep keyboard focus on the board so arrow-key play always works.
+  useEffect(() => {
+    if (active) boardKbRef.current && boardKbRef.current.focus({ preventScroll: true });
+  }, [active]);
 
   // Dismiss the game-over panel and deal a fresh game (ENTER on desktop, tap on
   // mobile — which has no keyboard, so this is the only way out of a win/loss there).
@@ -228,13 +244,11 @@ const TerminalSolitaire = () => {
           w: inner.clientWidth,
           tableauH: tableauRef.current ? tableauRef.current.clientHeight : 600,
         });
-        if (headerRef.current) setHeaderH(headerRef.current.offsetHeight);
       });
     };
     const ro = new ResizeObserver(measure);
     ro.observe(inner);
     if (tableauRef.current) ro.observe(tableauRef.current);
-    if (headerRef.current) ro.observe(headerRef.current);
     measure();
     return () => { ro.disconnect(); cancelAnimationFrame(raf); };
   }, [isMobile]);
@@ -288,7 +302,7 @@ const TerminalSolitaire = () => {
   useEffect(() => {
     if (!noMoves && !hasWon) return;
     const onKey = (e) => {
-      if (e.key !== 'Enter') return;
+      if (e.key !== 'Enter' || !activeRef.current) return;
       dismissPanel();
     };
     window.addEventListener('keydown', onKey);
@@ -368,9 +382,8 @@ const TerminalSolitaire = () => {
       }
     };
     const onKey = (e) => {
-      const g = gameRef.current;
-      if (!g || g.hasWon || g.noMoves) return;
-      if (e.key === 'r' || e.key === 'R') g.handleStockClick(); // recycle/draw the stock
+      const g = gameRef.current; // fallback for when the board surface isn't focused
+      if (g && g.handleKey) g.handleKey(e);
     };
     window.addEventListener('keydown', onKey);
     const onCancel = () => {
@@ -888,17 +901,107 @@ const TerminalSolitaire = () => {
     return false;
   };
 
-  gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves, cardW, cardH, fanFor };
+  // ── Keyboard play ───────────────────────────────────────────────────────────
+  const firstUp = (col) => tableaus[col].findIndex((c) => c.isFaceUp);
+
+  // Is the keyboard cursor on this card/pile right now?
+  const curAt = (area, index, cardIndex) => {
+    if (!kbOn) return false;
+    if (cur.zone === 'top') {
+      if (area === 'stock') return cur.slot === 0;
+      if (area === 'waste') return cur.slot === 1;
+      if (area === 'foundation') return cur.slot === index + 2;
+      return false;
+    }
+    if (area !== 'tableau' || index !== cur.col) return false;
+    const len = tableaus[cur.col].length;
+    if (len === 0) return cardIndex === undefined; // empty-column placeholder
+    return cardIndex === Math.min(cur.depth, len - 1);
+  };
+
+  const selectedCards = () => {
+    if (!selected) return [];
+    if (selected.area === 'waste') return waste.length ? [waste[waste.length - 1]] : [];
+    if (selected.area === 'foundation') { const f = foundations[selected.index]; return f.length ? [f[f.length - 1]] : []; }
+    return tableaus[selected.index].slice(selected.cardIndex);
+  };
+
+  const selectAtCursor = () => {
+    if (cur.zone === 'top') {
+      if (cur.slot === 1 && waste.length) { setSelected({ area: 'waste', index: 0, cardIndex: waste.length - 1 }); return true; }
+      if (cur.slot >= 2) { const fi = cur.slot - 2; if (foundations[fi].length) { setSelected({ area: 'foundation', index: fi, cardIndex: foundations[fi].length - 1 }); return true; } }
+      return false;
+    }
+    const len = tableaus[cur.col].length;
+    if (!len) return false;
+    const depth = Math.min(cur.depth, len - 1);
+    const card = tableaus[cur.col][depth];
+    if (card && card.isFaceUp) { setSelected({ area: 'tableau', index: cur.col, cardIndex: depth }); return true; }
+    return false;
+  };
+
+  const activateCursor = () => {
+    if (!selected) {
+      if (cur.zone === 'top' && cur.slot === 0) { handleStockClick(); return; }
+      if (!selectAtCursor()) setSelected(null);
+      return;
+    }
+    // holding a selection → the cursor pile is the destination
+    const cards = selectedCards();
+    if (!cards.length) { setSelected(null); return; }
+    if (cur.zone === 'top') {
+      if (cur.slot >= 2 && cards.length === 1 && canMoveToFoundation(cards[0], cur.slot - 2)) {
+        executeMove(selected, { area: 'foundation', index: cur.slot - 2 }, cards); return;
+      }
+    } else if (canMoveToTableau(cards, cur.col)) {
+      executeMove(selected, { area: 'tableau', index: cur.col }, cards); return;
+    }
+    if (!selectAtCursor()) setSelected(null); // invalid move → reselect cursor card or clear
+  };
+
+  const handleBoardKey = (e) => {
+    if (!active || hasWon || noMoves) return;
+    const k = e.key;
+    if (k === 'r' || k === 'R') { e.preventDefault(); e.stopPropagation(); handleStockClick(); return; }
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Escape', 'f', 'F'].includes(k)) return;
+    e.preventDefault();
+    e.stopPropagation(); // when the board is focused, don't let the window fallback double-handle
+    setKbOn(true);
+
+    if (k === 'Escape') { setSelected(null); return; }
+    if (k === 'f' || k === 'F') {
+      if (cur.zone === 'tab') { const len = tableaus[cur.col].length; if (len) sendTopToFoundation('tableau', cur.col, len - 1); }
+      else if (cur.slot === 1 && waste.length) sendTopToFoundation('waste', 0, waste.length - 1);
+      return;
+    }
+    if (k === 'Enter' || k === ' ') { activateCursor(); return; }
+
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      const d = k === 'ArrowLeft' ? -1 : 1;
+      if (cur.zone === 'top') setCur({ zone: 'top', slot: Math.max(0, Math.min(5, cur.slot + d)) });
+      else { const col = Math.max(0, Math.min(6, cur.col + d)); const len = tableaus[col].length; setCur({ zone: 'tab', col, depth: len ? len - 1 : 0 }); }
+      return;
+    }
+    // ArrowUp / ArrowDown
+    if (cur.zone === 'top') {
+      if (k === 'ArrowDown') { const col = SLOT_TO_COL[cur.slot]; const len = tableaus[col].length; setCur({ zone: 'tab', col, depth: len ? len - 1 : 0 }); }
+      return;
+    }
+    const col = cur.col, len = tableaus[col].length, fu = firstUp(col);
+    if (k === 'ArrowUp') {
+      if (len && fu !== -1 && cur.depth > fu) setCur({ zone: 'tab', col, depth: cur.depth - 1 });
+      else setCur({ zone: 'top', slot: colToSlot(col) });
+    } else if (len && cur.depth < len - 1) {
+      setCur({ zone: 'tab', col, depth: cur.depth + 1 });
+    }
+  };
+
+  gameRef.current = { waste, foundations, tableaus, canMoveToTableau, canMoveToFoundation, executeMove, handleStockClick, hasWon, noMoves, cardW, cardH, fanFor, handleKey: handleBoardKey };
 
   return (
     <div
-      className={`terminal-bg flex flex-col overflow-hidden fixed inset-0 m-auto z-40 ${isMobile ? '' : 'border border-[#2d2d2d]'}`}
+      className="relative flex flex-col h-full w-full"
       style={{
-        width: isMobile ? '100%' : (maximized ? '100%' : 'min(60rem, calc(100% - 2rem))'),
-        height: isMobile ? '100dvh' : (maximized ? '100%' : 'min(800px, calc(100% - 2rem))'),
-        borderRadius: isMobile ? '0px' : (maximized ? '0px' : '12px'),
-        boxShadow: isMobile ? 'none' : (maximized ? 'none' : '0 20px 50px rgba(0,0,0,0.5)'),
-        transition: isMobile ? 'none' : 'width 0.3s ease, height 0.3s ease, border-radius 0.3s ease',
         '--cw': `${cardW}px`,
         '--ch': `${cardH}px`,
         '--rank': `${cardW * (isMobile ? 0.25 : 0.16)}px`,
@@ -908,41 +1011,26 @@ const TerminalSolitaire = () => {
         '--curh': `${cardH * 0.19}px`,
       }}
     >
-      {isMobile ? (
-        <div
-          ref={headerRef}
-          className="bg-[#2d2d2d] flex items-center justify-between px-4 pb-2 flex-shrink-0 border-b border-black text-xs text-gray-400 uppercase tracking-wide"
-          style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
-        >
-          <span className="text-gray-500">Moves: {moveCount}</span>
-          <button onClick={showHint} disabled={hintsLeft === 0} className="cursor-pointer active:text-white disabled:opacity-40 disabled:cursor-not-allowed">Hint ({hintsLeft})</button>
-          <button onClick={startNewGame} className="cursor-pointer active:text-white">Restart</button>
-        </div>
-      ) : (
-        <div ref={headerRef} className="bg-[#2d2d2d] h-8 flex items-center px-4 relative flex-shrink-0 border-b border-black">
-          <div className="flex gap-2 z-10">
-            <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
-            <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
-            <div onClick={() => setMaximized((m) => !m)} title="Toggle full screen" className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] cursor-pointer"></div>
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="text-gray-400 text-sm font-semibold tracking-wider">Solitaire</span>
-          </div>
-          <div className="ml-auto z-10 flex gap-4 text-xs text-gray-500">
-            <button onClick={showHint} disabled={hintsLeft === 0} className="hover:text-white transition-colors uppercase cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Hint ({hintsLeft})</button>
-            <button onClick={startNewGame} className="hover:text-white transition-colors uppercase cursor-pointer">Restart</button>
-            <span>Moves: {moveCount}</span>
-          </div>
-        </div>
-      )}
+      <WindowControls>
+        <button onClick={showHint} disabled={hintsLeft === 0} className="hover:text-white active:text-white transition-colors uppercase cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Hint ({hintsLeft})</button>
+        <button onClick={startNewGame} className="hover:text-white active:text-white transition-colors uppercase cursor-pointer">Restart</button>
+        <span>Moves: {moveCount}</span>
+      </WindowControls>
 
-      <div className={`flex-1 ${isMobile ? 'px-2 pt-6 pb-2' : 'p-6 sm:p-10'} flex flex-col relative overflow-y-auto transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`} onClick={() => setSelected(null)}>
+      <div
+        ref={boardKbRef}
+        tabIndex={0}
+        onKeyDown={handleBoardKey}
+        onPointerDown={() => kbOn && setKbOn(false)}
+        className={`flex-1 ${isMobile ? 'px-2 pt-6 pb-2' : 'p-6 sm:p-10'} flex flex-col relative overflow-y-auto outline-none transition-all duration-300 ${noMoves && !hasWon ? 'grayscale opacity-40 pointer-events-none' : ''} ${hasWon ? 'pointer-events-none' : ''}`}
+        onClick={() => setSelected(null)}
+      >
         <div ref={boardInnerRef} className="w-full mx-auto flex flex-col flex-1 min-h-0" style={{ maxWidth: isMobile ? '100%' : DESKTOP_BOARD_W }}>
         <div className={`flex justify-around items-start ${isMobile ? 'mb-4' : 'mb-12'} flex-shrink-0`}>
           {/* col 1: stock */}
           <div
             style={{ width: 'var(--cw)', height: 'var(--ch)' }}
-            className={`border rounded-md cursor-pointer flex items-center justify-center ${stock.length > 0 ? 'striped-bg shadow-lg' : ''} ${hint && hint.from && hint.from.area === 'stock' ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : stock.length > 0 ? 'border-white' : 'border-gray-600/50'}`}
+            className={`border rounded-md cursor-pointer flex items-center justify-center ${stock.length > 0 ? 'striped-bg shadow-lg' : ''} ${hint && hint.from && hint.from.area === 'stock' ? 'border-[#00ff66] ring-2 ring-[#00ff66] z-20' : curAt('stock') ? 'border-[#7dd3fc] ring-2 ring-[#7dd3fc] z-20' : stock.length > 0 ? 'border-white' : 'border-gray-600/50'}`}
             onClick={handleStockClick}
           >
             {stock.length === 0 && (
@@ -953,7 +1041,7 @@ const TerminalSolitaire = () => {
           {/* col 2: waste */}
           <div className="relative" style={{ width: 'var(--cw)', height: 'var(--ch)' }}>
             {waste.length === 0 || isDragging('waste', 0, waste.length - 1) ? (
-              <Card isEmptyPlaceholder={true} onClick={() => handleEmptyPileClick('waste', 0)} />
+              <Card isEmptyPlaceholder={true} isKbCursor={curAt('waste', 0)} onClick={() => handleEmptyPileClick('waste', 0)} />
             ) : (
               <Card
                 card={waste[waste.length - 1]}
@@ -963,6 +1051,7 @@ const TerminalSolitaire = () => {
                 isSelected={isCardSelected('waste', 0, waste.length - 1)}
                 showCursor={isSelectionHead('waste', 0, waste.length - 1)}
                 isHint={isHintFrom('waste', 0, waste.length - 1)}
+                isKbCursor={curAt('waste', 0)}
               />
             )}
           </div>
@@ -974,7 +1063,7 @@ const TerminalSolitaire = () => {
           {foundations.map((foundation, index) => (
             <div key={`foundation-${index}`} ref={(el) => (foundationRefs.current[index] = el)} data-drop={`foundation:${index}`} className="relative" style={{ width: 'var(--cw)', height: 'var(--ch)' }}>
               {foundation.length === 0 || isDragging('foundation', index, foundation.length - 1) ? (
-                <Card isEmptyPlaceholder={true} isHint={isHintTo('foundation', index)} onClick={() => handleEmptyPileClick('foundation', index)} />
+                <Card isEmptyPlaceholder={true} isHint={isHintTo('foundation', index)} isKbCursor={curAt('foundation', index)} onClick={() => handleEmptyPileClick('foundation', index)} />
               ) : (
                 <Card
                   card={foundation[foundation.length - 1]}
@@ -983,6 +1072,7 @@ const TerminalSolitaire = () => {
                   isSelected={isCardSelected('foundation', index, foundation.length - 1)}
                   showCursor={isSelectionHead('foundation', index, foundation.length - 1)}
                   isHint={isHintTo('foundation', index)}
+                  isKbCursor={curAt('foundation', index)}
                 />
               )}
             </div>
@@ -993,7 +1083,7 @@ const TerminalSolitaire = () => {
           {tableaus.map((tableau, tIndex) => (
             <div key={`tableau-${tIndex}`} data-drop={`tableau:${tIndex}`} className="relative flex flex-col flex-shrink-0" style={{ width: 'var(--cw)', minHeight: cardH }}>
               {tableau.length === 0 || (drag && drag.source.area === 'tableau' && drag.source.index === tIndex && drag.source.cardIndex === 0) ? (
-                <Card isEmptyPlaceholder={true} isHint={isHintTo('tableau', tIndex)} onClick={() => handleEmptyPileClick('tableau', tIndex)} />
+                <Card isEmptyPlaceholder={true} isHint={isHintTo('tableau', tIndex)} isKbCursor={curAt('tableau', tIndex)} onClick={() => handleEmptyPileClick('tableau', tIndex)} />
               ) : (
                 tableau.map((card, cIndex) => (
                   <div
@@ -1012,6 +1102,7 @@ const TerminalSolitaire = () => {
                       isSelected={isCardSelected('tableau', tIndex, cIndex)}
                       showCursor={isSelectionHead('tableau', tIndex, cIndex)}
                       isHint={isHintFrom('tableau', tIndex, cIndex) || (isHintTo('tableau', tIndex) && cIndex === tableau.length - 1)}
+                      isKbCursor={curAt('tableau', tIndex, cIndex)}
                       isDragging={isDragging('tableau', tIndex, cIndex)}
                     />
                   </div>
@@ -1026,8 +1117,7 @@ const TerminalSolitaire = () => {
       {hasWon && (
         <canvas
           ref={winCanvasRef}
-          className="absolute left-0 w-full z-40 pointer-events-none"
-          style={{ top: headerH, height: `calc(100% - ${headerH}px)` }}
+          className="absolute inset-0 w-full h-full z-40 pointer-events-none"
         />
       )}
 
@@ -1086,47 +1176,4 @@ const TerminalSolitaire = () => {
   );
 };
 
-const App = () => {
-  useEffect(() => {
-    const fontLink = document.createElement('link');
-    fontLink.rel = 'stylesheet';
-    fontLink.href = 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap';
-    document.head.appendChild(fontLink);
-
-    const style = document.createElement('style');
-    style.textContent = `
-      html, body { height: 100%; }
-      body { background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/wallpaper.png') center / cover no-repeat fixed; color: #e0e0e0; margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-touch-callout: none; touch-action: manipulation; font-family: 'Fira Code', monospace; -webkit-tap-highlight-color: transparent; }
-      .terminal-bg { background-color: #1e1e1e; }
-      .striped-bg { background: repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(150, 150, 150, 0.16) 4px, rgba(150, 150, 150, 0.16) 5px); }
-      .card-label { background: linear-gradient(to bottom, rgba(30,30,30,0) 0%, #1e1e1e 28%, #1e1e1e 72%, rgba(30,30,30,0) 100%); }
-      * { user-select: none; -webkit-user-select: none; }
-      ::selection { background: transparent; }
-      ::-webkit-scrollbar { width: 8px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
-      .card-cursor { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 18px; background: #00ff66; animation: blink 1s step-end infinite; }
-      .prompt-cursor { display: inline-block; width: 2px; height: 1.05em; margin-left: 4px; background: #00ff66; vertical-align: text-bottom; animation: blink 1s step-end infinite; }
-      @keyframes blink { 50% { opacity: 0; } }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .terminal-panel { animation: slideUp 0.18s ease-out; }
-      @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-      .panel-exit { animation: slideDown 0.24s ease-in forwards; }
-      @keyframes slideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
-    `;
-    document.head.appendChild(style);
-
-    return () => {
-      document.head.removeChild(fontLink);
-      document.head.removeChild(style);
-    };
-  }, []);
-
-  return (
-    <div className="w-full min-h-screen flex items-center justify-center p-4 sm:p-8 overflow-hidden">
-      <TerminalSolitaire />
-    </div>
-  );
-};
-
-export default App;
+export default SolitaireGame;
