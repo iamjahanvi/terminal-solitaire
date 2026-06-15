@@ -24,11 +24,11 @@ const HomeClock = () => {
     const id = setInterval(() => setNow(new Date()), 10000);
     return () => clearInterval(id);
   }, []);
-  const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   const date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
   return (
     <div className="text-center mb-12">
-      <div className="font-mono text-6xl text-gray-100 tracking-tight tabular-nums">{time}</div>
+      <div className="font-sans font-bold text-6xl text-gray-100 tracking-tight tabular-nums">{time}</div>
       <div className="font-mono text-sm text-gray-400 mt-2">{date}</div>
     </div>
   );

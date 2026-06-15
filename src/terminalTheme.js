@@ -10,7 +10,10 @@ const FONT_HREF =
 
 const CSS = `
   html, body { height: 100%; }
-  body { background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/wallpaper.png') center / cover no-repeat fixed; color: #e0e0e0; margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-touch-callout: none; touch-action: manipulation; font-family: 'Fira Code', monospace; -webkit-tap-highlight-color: transparent; }
+  body { background-color: #0d0d0d; color: #e0e0e0; margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-touch-callout: none; touch-action: manipulation; font-family: 'Fira Code', monospace; -webkit-tap-highlight-color: transparent; }
+  /* wallpaper on its own fixed layer so it can be transformed independently of content */
+  body::before { content: ''; position: fixed; inset: 0; z-index: -1; background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url('/wallpaper.png') center / cover no-repeat; }
+  @media (max-width: 639px) { body::before { transform: scaleY(-1); } } /* mobile: flip the background vertically */
   .terminal-bg { background-color: #1e1e1e; }
   .striped-bg { background: repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(150, 150, 150, 0.16) 4px, rgba(150, 150, 150, 0.16) 5px); }
   .card-label { background: linear-gradient(to bottom, rgba(30,30,30,0) 0%, #1e1e1e 28%, #1e1e1e 72%, rgba(30,30,30,0) 100%); }
