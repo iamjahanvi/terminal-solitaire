@@ -37,21 +37,18 @@ const CSS = `
   .win-open { animation: winOpen 0.14s ease-out; }
   .traffic-light { transition: filter 0.12s ease; }
   .traffic-light:hover { filter: brightness(0.8); }
-  /* Dock — pure-CSS mac magnification (width/height grows, neighbors get pushed) */
+  /* Dock — magnification is driven per-frame from Dock.jsx (width/height grows, neighbors get pushed) */
   .dock { display: flex; align-items: flex-end; gap: 6px; height: 74px; box-sizing: border-box; padding: 12px 14px; border-radius: 22px; overflow: visible;
     background: rgba(255,255,255,0.4); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%);
     border: 1px solid rgba(255,255,255,0.5); box-shadow: 0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.65); }
   .dock .app { position: relative; flex: none; width: 50px; height: 50px; background: none; border: none; padding: 0; cursor: pointer;
-    display: flex; align-items: flex-end; justify-content: center;
-    transition: width .14s cubic-bezier(.25,1,.5,1), height .14s cubic-bezier(.25,1,.5,1); }
-  .dock.dock-instant .app { transition: none; }
-  .dock .app:hover { width: 82px; height: 82px; }
-  .dock .app:hover + .app, .dock .app:has(+ .app:hover) { width: 66px; height: 66px; }
-  .dock .app:hover + .app + .app, .dock .app:has(+ .app + .app:hover) { width: 56px; height: 56px; }
+    display: flex; align-items: flex-end; justify-content: center; }
   .dock .app-tooltip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 10px;
     background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.12); color: #f3f4f6; font-family: 'Fira Code', monospace;
     font-size: 11px; padding: 3px 8px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .1s ease; }
   .dock .app:hover .app-tooltip { opacity: 1; }
+  .dock .app-disabled { cursor: default; }
+  .dock .app-soon { color: #9aa0a6; }
 `;
 
 let refCount = 0;

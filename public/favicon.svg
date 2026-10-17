@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="1.25 1.25 61.5 61.5">
+  <!-- DMG-style handheld: grey body with the rounded bottom-right corner -->
+  <path d="M17 2h30a5 5 0 0 1 5 5v41a14 14 0 0 1-14 14H17a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Z" fill="#cfcfc6" stroke="#8f8f88" stroke-width="1.5" />
+  <path d="M18.5 6h27a2.5 2.5 0 0 1 2.5 2.5V28a6 6 0 0 1-6 6H18.5A2.5 2.5 0 0 1 16 31.5v-23A2.5 2.5 0 0 1 18.5 6Z" fill="#5d5f73" />
+  <!-- pea-green screen with a pixel ❯_ prompt -->
+  <rect x="20" y="9.5" width="24" height="20" fill="#9bbc0f" />
+  <g fill="#0f380f">
+    <rect x="23" y="13" width="2.6" height="2.6" />
+    <rect x="25.5" y="15.5" width="2.6" height="2.6" />
+    <rect x="28" y="18" width="2.6" height="2.6" />
+    <rect x="25.5" y="20.5" width="2.6" height="2.6" />
+    <rect x="23" y="23" width="2.6" height="2.6" />
+    <rect x="32" y="23" width="8" height="2.6" />
+  </g>
+  <!-- D-pad, A/B buttons, speaker grille -->
+  <g fill="#2a2a2e">
+    <rect x="16.5" y="42.4" width="10" height="3.4" rx="0.8" />
+    <rect x="19.8" y="39.1" width="3.4" height="10" rx="0.8" />
+  </g>
+  <circle cx="44" cy="41" r="3.4" fill="#9a2257" />
+  <circle cx="37" cy="45" r="3.4" fill="#9a2257" />
+  <g stroke="#8f8f88" stroke-width="1.4" stroke-linecap="round">
+    <line x1="38" y1="56" x2="42" y2="52" />
+    <line x1="41.5" y1="56" x2="45.5" y2="52" />
+  </g>
+</svg>
