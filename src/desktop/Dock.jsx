@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GAMES } from './registry.jsx';
+import { GAMES, COMING_SOON } from './registry.jsx';
 import { AppTile } from './icons.jsx';
 
 const REVEAL_ZONE = 80; // px from the bottom of the screen that re-shows the dock
@@ -41,6 +41,14 @@ export default function Dock({ autoHide, onOpen, onContext }) {
             onContextMenu={(e) => { e.preventDefault(); onContext(e, g.id); }}
           >
             <span className="app-tooltip">{g.title}</span>
+            <AppTile>
+              <span className="block" style={{ width: '74%', height: '74%' }}><g.Icon /></span>
+            </AppTile>
+          </button>
+        ))}
+        {COMING_SOON.map((g) => (
+          <button key={g.id} className="app app-disabled" aria-disabled="true" aria-label={`${g.title} (coming soon)`} onContextMenu={(e) => e.preventDefault()}>
+            <span className="app-tooltip">{g.title} <span className="app-soon">· coming soon</span></span>
             <AppTile>
               <span className="block" style={{ width: '74%', height: '74%' }}><g.Icon /></span>
             </AppTile>

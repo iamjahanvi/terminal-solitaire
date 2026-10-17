@@ -32,6 +32,24 @@ export const SudokuIcon = (props) => (
   </svg>
 );
 
+// ASCII Tetris, after the 1984 original that drew every block as "[]": a T dropping
+// toward a red/white stack. Each row is a 5-column grid ('.' = empty) so blocks line
+// up exactly; ligatures are off so Fira Code renders "[]" as two plain glyphs.
+const TETRIS_COLORS = { a: '#00ff66', b: '#ff5555', c: '#e5e7eb' };
+const TETRIS_ROWS = ['.aaa.', '..a..', '.....', 'b..cc', 'bbcc.'];
+const TETRIS_FS = 14;
+const TETRIS_X0 = (100 - 5 * TETRIS_FS * 1.2) / 2;
+
+export const TetrisIcon = (props) => (
+  <svg viewBox="0 0 100 100" width="100%" height="100%" {...props}>
+    <g fontFamily="'Fira Code', monospace" fontSize={TETRIS_FS} fontWeight="600" style={{ fontVariantLigatures: 'none', fontFeatureSettings: "'liga' 0, 'calt' 0" }}>
+      {TETRIS_ROWS.flatMap((row, r) => [...row].map((k, c) => k === '.' ? null : (
+        <text key={`${r}-${c}`} x={TETRIS_X0 + c * TETRIS_FS * 1.2} y={24 + r * 17} fill={TETRIS_COLORS[k]}>[]</text>
+      )))}
+    </g>
+  </svg>
+);
+
 // Rounded "app tile" framing an icon. Fills its parent by default (the dock sizes
 // it via CSS); pass `size` for a fixed tile (mobile home screen).
 export const AppTile = ({ size, children }) => (

@@ -52,6 +52,8 @@ const CSS = `
     background: rgba(20,20,20,0.92); border: 1px solid rgba(255,255,255,0.12); color: #f3f4f6; font-family: 'Fira Code', monospace;
     font-size: 11px; padding: 3px 8px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .1s ease; }
   .dock .app:hover .app-tooltip { opacity: 1; }
+  .dock .app-disabled { cursor: default; }
+  .dock .app-soon { color: #9aa0a6; }
 `;
 
 let refCount = 0;
