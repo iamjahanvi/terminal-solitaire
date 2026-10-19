@@ -49,6 +49,34 @@ const CSS = `
   .dock .app:hover .app-tooltip { opacity: 1; }
   .dock .app-disabled { cursor: default; }
   .dock .app-soon { color: #9aa0a6; }
+  /* Sky clock — digits cut out of the wallpaper (see SkyClock.jsx) */
+  .sky-clock { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; padding-top: 8.5vh; pointer-events: none; z-index: 0; }
+  .sky-cut { background: url('/wallpaper.png') center / cover no-repeat; -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: brightness(1.9) contrast(1.15) drop-shadow(0 8px 24px rgba(0,0,0,0.55)); }
+  .sky-time { font: 600 min(19vw, 30vh)/1 'Fira Code', monospace; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sky-date { margin-top: 2.5vh; font-size: 17px; color: #e5e7eb; letter-spacing: 0.12em; text-shadow: 0 2px 10px #000, 0 0 2px #000; }
+  /* Desktop files (see files.jsx): a column of icons down the right edge */
+  .desk-files { position: fixed; top: 28px; right: 22px; display: flex; flex-direction: column; gap: 22px; z-index: 1; }
+  .desk-file { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; background: none; border: none; padding: 0; cursor: default; outline: none; }
+  .desk-file-icon { display: block; width: 52px; height: 60px; padding: 4px; border-radius: 6px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+  .desk-file-name { font: 500 13px/1.3 'Fira Code', monospace; color: #f3f4f6; padding: 1px 6px; border-radius: 4px; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  .desk-file:focus .desk-file-icon { background: rgba(255,255,255,.16); }
+  .desk-file:focus .desk-file-name { background: #00a84a; text-shadow: none; }
+  .desk-file:focus-visible .desk-file-icon { box-shadow: 0 0 0 2px #00ff66; }
+  /* Desktop cat (see DesktopCat.jsx) — sits on the dark forest floor above the dock */
+  .cat-layer { position: fixed; left: 0; right: 0; bottom: 118px; height: 0; pointer-events: none; z-index: 1; transition: opacity .25s; }
+  .cat { position: absolute; left: 0; bottom: 0; margin: 0; padding: 0; background: none; border: none; white-space: pre; text-align: left;
+    font: 600 17px/1.15 'Fira Code', monospace; color: #e5e7eb; text-shadow: 0 2px 8px #000; cursor: pointer; pointer-events: auto; }
+  .cat:focus-visible { outline: 2px solid #00ff66; outline-offset: 4px; border-radius: 6px; }
+  .cat-eye { color: #00ff66; }
+  .cat-bubble { position: absolute; left: 0; bottom: 94px; background: #f3f4f6; color: #0b0d0c; font: 500 13px/1.4 'Fira Code', monospace; padding: 8px 12px;
+    border-radius: 12px; white-space: nowrap; opacity: 0; transition: opacity .25s; }
+  .cat-bubble::after { content: ''; position: absolute; left: var(--tail, 22px); bottom: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: #f3f4f6; }
+  .cat-zz { position: absolute; bottom: 82px; font: 600 16px 'Fira Code', monospace; color: #9aa0a6; animation: catZz 2.4s ease-out infinite; }
+  @keyframes catZz { from { opacity: 0; transform: translate(0, 0); } 30% { opacity: 1; } to { opacity: 0; transform: translate(18px, -34px); } }
+  .cat-heart { position: absolute; bottom: 40px; color: #ff5555; font: 600 18px 'Fira Code', monospace; animation: catHeart 1.2s ease-out both; }
+  @keyframes catHeart { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-50px); } }
+  @media (prefers-reduced-motion: reduce) { .cat-zz, .cat-heart { animation: none; } }
 `;
 
 let refCount = 0;

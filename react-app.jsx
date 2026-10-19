@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { WindowControls } from './src/desktop/Window.jsx';
+import { recordWin } from './src/desktop/stats.js';
 
 const SUITS = [
   { id: 'spades', symbol: '♠', color: 'white' },
@@ -255,8 +256,9 @@ export const SolitaireGame = ({ active = true }) => {
 
   useEffect(() => {
     const totalInFoundations = foundations.reduce((sum, f) => sum + f.length, 0);
-    if (totalInFoundations === 52) {
+    if (totalInFoundations === 52 && !hasWon) {
       setHasWon(true);
+      recordWin('solitaire', { moves: moveCount });
     }
   }, [foundations]);
 

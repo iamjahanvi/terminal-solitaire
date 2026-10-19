@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTerminalTheme } from '../terminalTheme.js';
-import { GAMES, getGame } from './registry.jsx';
+import { GAMES, getGame, getApp, isGame } from './registry.jsx';
+import { DesktopFiles } from './files.jsx';
 import Window, { TOPBAR_H } from './Window.jsx';
 import Dock from './Dock.jsx';
 import CommandLine from './CommandLine.jsx';
 import ContextMenu from './ContextMenu.jsx';
 import { AppTile } from './icons.jsx';
+import SkyClock from './SkyClock.jsx';
+import DesktopCat from './DesktopCat.jsx';
 
 const useIsMobile = () => {
   const [m, setM] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
@@ -67,19 +70,22 @@ export default function Desktop() {
     return vis.length ? vis.reduce((a, b) => (a.z > b.z ? a : b)).id : null;
   };
 
-  // One game window at a time: opening a game replaces any other open game.
+  // One game window at a time: opening a game replaces any other open game. Desktop
+  // files (README, scores, Trash) work the same among themselves but sit alongside
+  // the game, so peeking at the README never throws away a game in progress.
   const openGame = useCallback((id) => {
-    if (!getGame(id)) return;
+    const g = getApp(id);
+    if (!g) return;
     setWindows((ws) => {
       const z = ++zRef.current;
       const existing = ws.find((w) => w.id === id);
-      if (existing) return [{ ...existing, minimized: false, z }]; // restore/focus the same game
-      const g = getGame(id);
+      if (existing) return ws.map((w) => (w.id === id ? { ...w, minimized: false, z } : w)); // restore/focus
       const w = Math.min(g.width, window.innerWidth - 16);
       const h = Math.min(g.height, window.innerHeight - TOPBAR_H - 16);
       const x = Math.max(0, (window.innerWidth - w) / 2);
       const y = Math.max(TOPBAR_H + 12, (window.innerHeight - h) / 2 - 16);
-      return [{ id, x, y, z, minimized: false, fullscreen: false }]; // closes the previous game
+      const others = ws.filter((o) => isGame(o.id) !== isGame(id)); // closes the previous game / file
+      return [...others, { id, x, y, z, minimized: false, fullscreen: false }];
     });
     setFocusedId(id);
     setTerminalOpen(false);
@@ -119,7 +125,7 @@ export default function Desktop() {
         if (!ws.length) return ws;
         return ws.map((w) => {
           if (w.fullscreen) return w;
-          const g = getGame(w.id);
+          const g = getApp(w.id);
           const width = Math.min(g.width, window.innerWidth - 16);
           const height = Math.min(g.height, window.innerHeight - TOPBAR_H - 16);
           const x = Math.max(0, (window.innerWidth - width) / 2);
@@ -157,7 +163,7 @@ export default function Desktop() {
   // ── `/` opens the in-game command terminal (desktop only) ─────────────────
   useEffect(() => {
     const onKey = (e) => {
-      if (isMobile || terminalOpen || !focusedId) return;
+      if (isMobile || terminalOpen || !focusedId || !isGame(focusedId)) return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
       if (e.key === '/') { e.preventDefault(); setTerminalOpen(true); }
@@ -170,7 +176,7 @@ export default function Desktop() {
   useEffect(() => {
     const apply = () => {
       const id = window.location.hash.replace(/^#\/?/, '');
-      if (id && getGame(id)) openGame(id);
+      if (id && getApp(id)) openGame(id);
     };
     apply();
     window.addEventListener('hashchange', apply);
@@ -201,8 +207,13 @@ export default function Desktop() {
 
   return (
     <div className="fixed inset-0 overflow-hidden">
+      {/* desktop scenery: clock in the sky, cat on the forest floor (cat naps out of sight while a game is open) */}
+      {!isMobile && <SkyClock />}
+      {!isMobile && <DesktopCat hidden={hasVisibleWindow} />}
+      {!isMobile && <DesktopFiles onOpen={openGame} />}
+
       {shown.map((w) => {
-        const g = getGame(w.id);
+        const g = getApp(w.id);
         const focused = w.id === focusedId;
         const active = focused && !w.minimized && !terminalOpen;
         return (

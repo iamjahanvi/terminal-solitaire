@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Matter from 'matter-js';
 import { WindowControls } from './src/desktop/Window.jsx';
+import { recordWin } from './src/desktop/stats.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Engine — pure JS, no deps. A grid is a flat array of 81 ints (0 = empty),
@@ -209,6 +210,11 @@ export const SudokuGame = ({ active = true }) => {
     const id = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, [status, cells.length]);
+
+  // Remember the win so the desktop cat can mention streaks and best times.
+  useEffect(() => {
+    if (status === 'won') recordWin('sudoku', { seconds, difficulty });
+  }, [status]);
 
   // Win celebration (Matter.js rigid bodies): the grid vanishes and the 81 solved
   // digits drop as circles, collide, and pile up on the terminal panel — the engine's

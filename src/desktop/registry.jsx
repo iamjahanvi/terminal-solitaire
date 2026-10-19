@@ -1,5 +1,6 @@
 import { SolitaireGame } from '../../react-app.jsx';
 import { SudokuGame } from '../../sudoku-app.jsx';
+import { FILES } from './files.jsx';
 import { SolitaireIcon, SudokuIcon, TetrisIcon } from './icons.jsx';
 
 // One entry per game. Adding a game = add a row here (drives the dock, the mobile
@@ -16,3 +17,7 @@ export const COMING_SOON = [
 ];
 
 export const getGame = (id) => GAMES.find((g) => g.id === id);
+
+// Games and desktop files both open in windows; anything that opens one looks it up here.
+export const getApp = (id) => getGame(id) || FILES.find((f) => f.id === id);
+export const isGame = (id) => !!getGame(id);
